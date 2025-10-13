@@ -4,9 +4,10 @@ FROM python:3.11-slim
 # Встановлюємо робочу директорію
 WORKDIR /app
 
-# Встановлюємо системні залежності
+# Встановлюємо системні залежності для PostgreSQL
 RUN apt-get update && apt-get install -y \
-    sqlite3 \
+    libpq-dev \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Копіюємо файл залежностей
@@ -14,13 +15,13 @@ COPY pyproject.toml .
 
 # Встановлюємо Python залежності
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir aiogram>=3.0.0 sqlmodel>=0.0.14 python-dotenv>=1.0.0 aiosqlite>=0.19.0
+    pip install --no-cache-dir aiogram>=3.0.0 sqlmodel>=0.0.14 python-dotenv>=1.0.0 asyncpg>=0.29.0 psycopg2-binary>=2.9.9
 
 # Копіюємо весь проект
 COPY . .
 
-# Створюємо директорію для бази даних та логів
-RUN mkdir -p /app/data /app/logs /app/static/images
+# Створюємо директорію для логів та зображень
+RUN mkdir -p /app/logs /app/static/images
 
 # Встановлюємо змінну середовища для Python
 ENV PYTHONUNBUFFERED=1

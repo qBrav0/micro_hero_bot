@@ -7,11 +7,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=sqlite+aiosqlite:///./data/gameclub.db
     volumes:
-      # Зберігаємо базу даних, логи та зображення
-      - ./data:/app/data
+      # Зберігаємо логи та зображення
       - ./logs:/app/logs
       - ./static/images:/app/static/images
     logging:

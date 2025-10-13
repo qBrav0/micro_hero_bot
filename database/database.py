@@ -7,10 +7,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/gameclub.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/gameclub")
 
 # Створюємо асинхронний движок
-engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=False, 
+    future=True,
+    pool_pre_ping=True,  # Перевірка з'єднання перед використанням
+    pool_size=10,  # Розмір пулу з'єднань
+    max_overflow=20  # Максимальна кількість додаткових з'єднань
+)
 
 # Створюємо фабрику сесій
 async_session = sessionmaker(
@@ -20,11 +27,6 @@ async_session = sessionmaker(
 
 async def init_db():
     """Ініціалізація бази даних"""
-    # Створюємо папку data якщо її немає
-    data_dir = os.path.dirname(DATABASE_URL.replace("sqlite+aiosqlite:///", ""))
-    if data_dir and not os.path.exists(data_dir):
-        os.makedirs(data_dir, exist_ok=True)
-    
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 

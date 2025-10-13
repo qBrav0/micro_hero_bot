@@ -8,7 +8,7 @@ Telegram бот для управління ігротекою, створени
 
 - **aiogram** - фреймворк для створення Telegram ботів
 - **SQLModel** - ORM для роботи з базою даних
-- **SQLite/PostgreSQL** - база даних
+- **PostgreSQL** - база даних (підтримка asyncpg)
 - **Python 3.8+**
 
 ## Функціональна структура
@@ -290,7 +290,7 @@ docker-compose up --build
 ```env
 BOT_TOKEN=ваш_токен_від_@BotFather
 ADMIN_IDS=ваш_telegram_id
-DATABASE_URL=sqlite+aiosqlite:///./gameclub.db
+DATABASE_URL=postgresql+asyncpg://postgres:password@host:port/database
 CLUB_NAME=Герої на полицях
 CLUB_DESCRIPTION=Ігротека настільних ігор
 ```

@@ -68,23 +68,22 @@ logs/
 |--------|----------|----------|
 | `BOT_TOKEN` | Токен вашого бота | [@BotFather](https://t.me/BotFather) → /newbot |
 | `ADMIN_IDS` | Ваш Telegram ID | [@userinfobot](https://t.me/userinfobot) |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./data/gameclub.db` | Скопіюйте це |
+| `DATABASE_URL` | PostgreSQL URL | Railway → New → Database → PostgreSQL → Copy URL |
 | `CLUB_NAME` | `Герої на полицях` | Або ваша назва |
 | `CLUB_DESCRIPTION` | `Ігротека настільних ігор` | Або ваш опис |
 
 **Приклад ADMIN_IDS для кількох адмінів:** `123456789,987654321`
 
-### 4. Додайте Volume (для бази даних)
+**Як отримати DATABASE_URL:**
+1. В Railway Dashboard натисніть "New"
+2. Оберіть "Database" → "Add PostgreSQL"
+3. Після створення, відкрийте базу
+4. Перейдіть на вкладку "Connect"
+5. Скопіюйте "Postgres Connection URL"
+6. Замініть `postgresql://` на `postgresql+asyncpg://`
+7. Додайте цей URL в Variables вашого бота
 
-**Важливо:** Щоб база даних не втрачалася!
-
-1. Перейдіть на вкладку "Settings"
-2. Прокрутіть до "Volumes"
-3. Натисніть "New Volume"
-4. **Mount Path**: `/app/data`
-5. Натисніть "Add"
-
-### 5. Деплой
+### 4. Деплой
 
 Railway автоматично:
 - ✅ Виявить ваш Dockerfile
@@ -200,10 +199,10 @@ railway up
    - Токен без лапок і пробілів
    - Перезапустіть деплой після додавання змінних
 
-2. **"Database error" або база втрачається**
-   - Перевірте що Volume створений
-   - Mount Path: `/app/data`
-   - Settings → Volumes → перевірте наявність
+2. **"Database error"**
+   - Перевірте що PostgreSQL база створена в Railway
+   - Перевірте що DATABASE_URL правильний
+   - URL має починатися з `postgresql+asyncpg://`
 
 3. **"Build failed"**
    - Перевірте що `Dockerfile` є в репозиторії
@@ -230,7 +229,7 @@ railway up
 ✅ **Автодеплой** - push в GitHub = автоматичне оновлення
 ✅ **Простота** - 5 хвилин налаштування
 ✅ **Логи в реальному часі** - легко дебажити
-✅ **Volumes** - база даних зберігається
+✅ **PostgreSQL база даних** - надійне зберігання даних
 
 ### Альтернативи
 
@@ -251,9 +250,9 @@ railway up
 - [ ] Код на GitHub
 - [ ] `.env` в `.gitignore` (не комітимо секрети!)
 - [ ] Railway акаунт створений (через GitHub)
+- [ ] PostgreSQL база даних створена в Railway
 - [ ] Проєкт створений з GitHub repo
-- [ ] Variables додані (BOT_TOKEN, ADMIN_IDS, тощо)
-- [ ] Volume створений з Mount Path `/app/data`
+- [ ] Variables додані (BOT_TOKEN, ADMIN_IDS, DATABASE_URL, тощо)
 - [ ] Деплой успішний (зелений статус)
 - [ ] Логи показують "🤖 Бот запущено успішно!"
 - [ ] Бот відповідає в Telegram на `/start`
