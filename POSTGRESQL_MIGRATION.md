@@ -9,7 +9,8 @@
 **Файл: `pyproject.toml`**
 - ❌ Видалено: `aiosqlite>=0.19.0`
 - ✅ Додано: `asyncpg>=0.29.0`
-- ✅ Додано: `psycopg2-binary>=2.9.9`
+
+**Важливо:** Не потрібен `psycopg2` - asyncpg це чисто асинхронний драйвер!
 
 **Новий файл: `requirements.txt`**
 - Створено для зручності встановлення залежностей
@@ -49,9 +50,10 @@
 ### 5. Оновлено Docker
 
 **Файл: `Dockerfile`**
-- Замінено `sqlite3` на `libpq-dev` та `gcc`
-- Оновлено Python залежності
+- Видалено системні залежності SQLite
+- Оновлено Python залежності (тільки asyncpg)
 - Видалено створення директорії `/app/data` (база в PostgreSQL)
+- asyncpg не потребує додаткових системних пакетів!
 
 **Файл: `docker-compose.yml`**
 - Видалено volume для `./data` (більше не потрібен)
@@ -157,10 +159,10 @@ from database.models import Game, User, GameSession, Registration
 pip install asyncpg>=0.29.0
 ```
 
-### Помилка: "psycopg2 not installed"
-```bash
-pip install psycopg2-binary>=2.9.9
-```
+### Помилка: "The asyncio extension requires an async driver"
+- Це означає, що встановлено `psycopg2` але потрібен `asyncpg`
+- Видаліть psycopg2: `pip uninstall psycopg2 psycopg2-binary`
+- Встановіть asyncpg: `pip install asyncpg>=0.29.0`
 
 ### Помилка: "relation does not exist"
 - Таблиці ще не створені

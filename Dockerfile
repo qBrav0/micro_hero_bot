@@ -4,18 +4,12 @@ FROM python:3.11-slim
 # Встановлюємо робочу директорію
 WORKDIR /app
 
-# Встановлюємо системні залежності для PostgreSQL
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
 # Копіюємо файл залежностей
 COPY pyproject.toml .
 
 # Встановлюємо Python залежності
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir aiogram>=3.0.0 sqlmodel>=0.0.14 python-dotenv>=1.0.0 asyncpg>=0.29.0 psycopg2-binary>=2.9.9
+    pip install --no-cache-dir aiogram>=3.0.0 sqlmodel>=0.0.14 python-dotenv>=1.0.0 asyncpg>=0.29.0
 
 # Копіюємо весь проект
 COPY . .

@@ -5,7 +5,6 @@
 import asyncio
 import asyncpg
 import sys
-from urllib.parse import urlparse
 
 # Налаштування кодування для Windows
 if sys.platform == "win32":
