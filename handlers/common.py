@@ -20,7 +20,7 @@ async def back_to_menu(message: Message):
 @router.message(F.text == "ℹ️ Про ігротеку")
 async def about_club(message: Message):
     """Інформація про ігротеку"""
-    from config import CLUB_ABOUT_TEXT
+    from config import CLUB_ABOUT_TEXT, CLUB_NAME, CLUB_DESCRIPTION
     
     if CLUB_ABOUT_TEXT:
         # Використовуємо кастомний текст

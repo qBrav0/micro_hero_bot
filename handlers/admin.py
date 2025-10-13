@@ -286,11 +286,16 @@ async def back_to_games_list(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("games_page_"))
-async def handle_games_pagination(callback: CallbackQuery):
+async def handle_games_pagination(callback: CallbackQuery, state: FSMContext):
     """Обробка пагінації списку ігор"""
     parts = callback.data.split("_")
     page = int(parts[2])
-    await show_games_list_page(callback, page=page)
+    page_type = parts[3] if len(parts) > 3 else "admin"  # schedule або admin
+    
+    if page_type == "schedule":
+        await show_schedule_games_list_page(callback, state, page=page)
+    else:
+        await show_games_list_page(callback, page=page)
 
 
 async def show_games_list_page(callback: CallbackQuery, page: int = 0):
@@ -319,6 +324,30 @@ async def show_games_list_page(callback: CallbackQuery, page: int = 0):
             text += f"   ⏱️ ~{game.avg_duration} хв\n\n"
         
         keyboard = get_games_list_keyboard(games, for_schedule=False, page=page)
+        
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
+
+
+async def show_schedule_games_list_page(callback: CallbackQuery, state: FSMContext, page: int = 0):
+    """Показати сторінку списку ігор для вибору в розклад"""
+    async for session in get_session():
+        games = await GameService.get_all_active_games(session)
+        
+        if not games:
+            await callback.message.edit_text("❌ Немає доступних ігор")
+            await callback.answer()
+            return
+        
+        # Обчислюємо які ігри показувати
+        items_per_page = 7
+        start_idx = page * items_per_page
+        end_idx = start_idx + items_per_page
+        total_pages = (len(games) + items_per_page - 1) // items_per_page
+        
+        text = f"🎮 <b>Оберіть гру зі списку</b> (Сторінка {page + 1}/{total_pages}):"
+        
+        keyboard = get_games_list_keyboard(games, for_schedule=True, page=page)
         
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         await callback.answer()
@@ -550,7 +579,7 @@ async def process_end_time(message: Message, state: FSMContext):
         return
     
     text = "🎮 Оберіть гру зі списку:"
-    keyboard = get_games_list_keyboard(games, for_schedule=True)
+    keyboard = get_games_list_keyboard(games, for_schedule=True, page=0)
     
     await message.answer(text, reply_markup=keyboard)
 
@@ -1215,7 +1244,24 @@ async def edit_payment_info_menu(callback: CallbackQuery):
 @admin_only
 async def back_to_club_info(callback: CallbackQuery):
     """Повернутися до меню редагування клубу"""
-    await edit_club_info(callback.message)
+    from config import CLUB_NAME, CLUB_DESCRIPTION
+    
+    text = "ℹ️ <b>Редагування інформації про клуб</b>\n\n"
+    text += f"<b>Поточна назва:</b> {CLUB_NAME}\n"
+    text += f"<b>Поточний опис:</b> {CLUB_DESCRIPTION}\n\n"
+    text += "Оберіть що хочете редагувати:"
+    
+    keyboard = [
+        [InlineKeyboardButton(text="ℹ️ Текст 'Про ігротеку'", callback_data="edit_club_about")],
+        [InlineKeyboardButton(text="💳 Інформація про оплату", callback_data="edit_payment_info_menu")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ]
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 
