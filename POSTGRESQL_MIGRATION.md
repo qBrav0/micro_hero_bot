@@ -19,6 +19,7 @@
 
 **Файл: `database/database.py`**
 - Змінено DATABASE_URL з SQLite на PostgreSQL
+- **Додано автоматичну конвертацію URL** - якщо URL має формат `postgresql://`, автоматично замінюється на `postgresql+asyncpg://`
 - Додано параметри пулу з'єднань для PostgreSQL:
   - `pool_pre_ping=True` - перевірка з'єднання перед використанням
   - `pool_size=10` - розмір пулу з'єднань
@@ -159,10 +160,11 @@ from database.models import Game, User, GameSession, Registration
 pip install asyncpg>=0.29.0
 ```
 
-### Помилка: "The asyncio extension requires an async driver"
-- Це означає, що встановлено `psycopg2` але потрібен `asyncpg`
-- Видаліть psycopg2: `pip uninstall psycopg2 psycopg2-binary`
-- Встановіть asyncpg: `pip install asyncpg>=0.29.0`
+### Помилка: "The asyncio extension requires an async driver" або "No module named 'psycopg2'"
+- Це означає, що DATABASE_URL має формат `postgresql://` замість `postgresql+asyncpg://`
+- **ВИПРАВЛЕННЯ:** Код тепер автоматично конвертує URL! Просто оновіть код з Git
+- Альтернатива: Вручну змініть DATABASE_URL в Railway Variables на `postgresql+asyncpg://...`
+- Переконайтесь що `psycopg2` НЕ встановлений: `pip uninstall psycopg2 psycopg2-binary`
 
 ### Помилка: "relation does not exist"
 - Таблиці ще не створені
