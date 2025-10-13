@@ -1216,13 +1216,19 @@ async def edit_club_about_start(callback: CallbackQuery, state: FSMContext):
 @admin_only
 async def edit_payment_info_menu(callback: CallbackQuery):
     """Меню редагування інформації про оплату"""
-    import config
+    from database import get_session, get_setting
+    
+    # Отримуємо поточні значення з БД
+    async for db_session in get_session():
+        payment_info = await get_setting(db_session, "PAYMENT_INFO")
+        payment_card = await get_setting(db_session, "PAYMENT_CARD_NUMBER")
+        payment_link = await get_setting(db_session, "PAYMENT_BANK_LINK")
     
     text = "💳 <b>Редагування інформації про оплату</b>\n\n"
     text += f"<b>Поточна інформація:</b>\n"
-    text += f"• Текст: {'Встановлено' if config.PAYMENT_INFO else 'Не встановлено'}\n"
-    text += f"• Номер картки: {config.PAYMENT_CARD_NUMBER or 'Не встановлено'}\n"
-    text += f"• Посилання на банку: {config.PAYMENT_BANK_LINK or 'Не встановлено'}\n\n"
+    text += f"• Текст: {'Встановлено' if payment_info else 'Не встановлено'}\n"
+    text += f"• Номер картки: {payment_card or 'Не встановлено'}\n"
+    text += f"• Посилання на банку: {payment_link or 'Не встановлено'}\n\n"
     text += "Оберіть що хочете редагувати:"
     
     keyboard = [
@@ -1279,33 +1285,10 @@ async def edit_club_about_process(message: Message, state: FSMContext):
         await message.answer("❌ Текст не може бути довшим за 1000 символів.")
         return
     
-    # Оновлюємо конфігурацію
-    import os
-    env_file = ".env"
-    if os.path.exists(env_file):
-        # Читаємо поточний .env
-        with open(env_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        # Оновлюємо CLUB_ABOUT_TEXT
-        updated_lines = []
-        for line in lines:
-            if line.startswith('CLUB_ABOUT_TEXT='):
-                updated_lines.append(f'CLUB_ABOUT_TEXT="{new_about_text}"\n')
-            else:
-                updated_lines.append(line)
-        
-        # Якщо змінної немає, додаємо її
-        if not any(line.startswith('CLUB_ABOUT_TEXT=') for line in lines):
-            updated_lines.append(f'CLUB_ABOUT_TEXT="{new_about_text}"\n')
-        
-        # Записуємо оновлений .env
-        with open(env_file, 'w', encoding='utf-8') as f:
-            f.writelines(updated_lines)
-    
-    # Перезавантажуємо конфігурацію
-    from config import reload_config
-    reload_config()
+    # Зберігаємо в базі даних
+    from database import get_session, set_setting
+    async for db_session in get_session():
+        await set_setting(db_session, "CLUB_ABOUT_TEXT", new_about_text)
     
     await state.clear()
     await message.answer(
@@ -1334,29 +1317,10 @@ async def edit_payment_text_process(message: Message, state: FSMContext):
     """Обробити новий текст про оплату"""
     new_text = message.text.strip()
     
-    import os
-    env_file = ".env"
-    if os.path.exists(env_file):
-        with open(env_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        updated_lines = []
-        found = False
-        for line in lines:
-            if line.startswith('PAYMENT_INFO='):
-                updated_lines.append(f'PAYMENT_INFO="{new_text}"\n')
-                found = True
-            else:
-                updated_lines.append(line)
-        
-        if not found:
-            updated_lines.append(f'PAYMENT_INFO="{new_text}"\n')
-        
-        with open(env_file, 'w', encoding='utf-8') as f:
-            f.writelines(updated_lines)
-    
-    from config import reload_config
-    reload_config()
+    # Зберігаємо в базі даних
+    from database import get_session, set_setting
+    async for db_session in get_session():
+        await set_setting(db_session, "PAYMENT_INFO", new_text)
     
     await state.clear()
     await message.answer(
@@ -1385,29 +1349,10 @@ async def edit_card_number_process(message: Message, state: FSMContext):
     """Обробити новий номер картки"""
     new_card = message.text.strip()
     
-    import os
-    env_file = ".env"
-    if os.path.exists(env_file):
-        with open(env_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        updated_lines = []
-        found = False
-        for line in lines:
-            if line.startswith('PAYMENT_CARD_NUMBER='):
-                updated_lines.append(f'PAYMENT_CARD_NUMBER="{new_card}"\n')
-                found = True
-            else:
-                updated_lines.append(line)
-        
-        if not found:
-            updated_lines.append(f'PAYMENT_CARD_NUMBER="{new_card}"\n')
-        
-        with open(env_file, 'w', encoding='utf-8') as f:
-            f.writelines(updated_lines)
-    
-    from config import reload_config
-    reload_config()
+    # Зберігаємо в базі даних
+    from database import get_session, set_setting
+    async for db_session in get_session():
+        await set_setting(db_session, "PAYMENT_CARD_NUMBER", new_card)
     
     await state.clear()
     await message.answer(
@@ -1436,29 +1381,10 @@ async def edit_bank_link_process(message: Message, state: FSMContext):
     """Обробити нове посилання на банку"""
     new_link = message.text.strip()
     
-    import os
-    env_file = ".env"
-    if os.path.exists(env_file):
-        with open(env_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        updated_lines = []
-        found = False
-        for line in lines:
-            if line.startswith('PAYMENT_BANK_LINK='):
-                updated_lines.append(f'PAYMENT_BANK_LINK="{new_link}"\n')
-                found = True
-            else:
-                updated_lines.append(line)
-        
-        if not found:
-            updated_lines.append(f'PAYMENT_BANK_LINK="{new_link}"\n')
-        
-        with open(env_file, 'w', encoding='utf-8') as f:
-            f.writelines(updated_lines)
-    
-    from config import reload_config
-    reload_config()
+    # Зберігаємо в базі даних
+    from database import get_session, set_setting
+    async for db_session in get_session():
+        await set_setting(db_session, "PAYMENT_BANK_LINK", new_link)
     
     await state.clear()
     await message.answer(

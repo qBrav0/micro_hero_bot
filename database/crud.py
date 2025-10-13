@@ -4,7 +4,7 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, or_
 
-from .models import User, Game, GameSession, Registration, DayPricing
+from .models import User, Game, GameSession, Registration, DayPricing, ClubSettings
 
 
 # ===== USER CRUD =====
@@ -341,3 +341,45 @@ async def update_day_pricing(session: AsyncSession, pricing_id: int, adult_price
         await session.refresh(pricing)
     
     return pricing
+
+
+# ===== CLUB SETTINGS CRUD =====
+
+async def get_setting(session: AsyncSession, key: str) -> Optional[str]:
+    """Отримати значення налаштування за ключем"""
+    result = await session.execute(
+        select(ClubSettings).where(ClubSettings.setting_key == key)
+    )
+    setting = result.scalar_one_or_none()
+    return setting.setting_value if setting else None
+
+
+async def set_setting(session: AsyncSession, key: str, value: Optional[str]) -> ClubSettings:
+    """Встановити значення налаштування (оновити якщо існує, створити якщо немає)"""
+    result = await session.execute(
+        select(ClubSettings).where(ClubSettings.setting_key == key)
+    )
+    setting = result.scalar_one_or_none()
+    
+    if setting:
+        # Оновлюємо існуюче
+        setting.setting_value = value
+        setting.updated_at = datetime.utcnow()
+    else:
+        # Створюємо нове
+        setting = ClubSettings(
+            setting_key=key,
+            setting_value=value
+        )
+        session.add(setting)
+    
+    await session.commit()
+    await session.refresh(setting)
+    return setting
+
+
+async def get_all_settings(session: AsyncSession) -> dict:
+    """Отримати всі налаштування як словник"""
+    result = await session.execute(select(ClubSettings))
+    settings = result.scalars().all()
+    return {s.setting_key: s.setting_value for s in settings}

@@ -21,12 +21,17 @@ async def back_to_menu(message: Message):
 async def about_club(message: Message):
     """Інформація про ігротеку"""
     import config
+    from database import get_session, get_setting
     
-    if config.CLUB_ABOUT_TEXT:
-        # Використовуємо кастомний текст
-        about_text = config.CLUB_ABOUT_TEXT
+    # Спочатку намагаємося отримати з БД
+    async for session in get_session():
+        club_about_text = await get_setting(session, "CLUB_ABOUT_TEXT")
+    
+    if club_about_text:
+        # Використовуємо текст з БД
+        about_text = club_about_text
     else:
-        # Використовуємо стандартний текст
+        # Використовуємо стандартний текст з .env або дефолтний
         about_text = f"ℹ️ <b>{config.CLUB_NAME}</b>\n\n"
         about_text += f"{config.CLUB_DESCRIPTION}\n\n"
         about_text += "🎲 У нас ви можете:\n"
@@ -83,10 +88,17 @@ async def show_top_players(message: Message):
 async def show_payment_info(message: Message):
     """Показати інформацію про оплату"""
     import config
+    from database import get_session, get_setting
     
-    if config.PAYMENT_INFO:
-        # Використовуємо кастомну інформацію
-        text = config.PAYMENT_INFO
+    # Отримуємо дані з БД
+    async for session in get_session():
+        payment_info = await get_setting(session, "PAYMENT_INFO")
+        payment_card = await get_setting(session, "PAYMENT_CARD_NUMBER")
+        payment_link = await get_setting(session, "PAYMENT_BANK_LINK")
+    
+    if payment_info:
+        # Використовуємо кастомну інформацію з БД
+        text = payment_info
     else:
         # Використовуємо стандартну інформацію
         text = "💳 <b>Інформація про оплату</b>\n\n"
@@ -100,11 +112,15 @@ async def show_payment_info(message: Message):
         text += "• 🎁 - Безкоштовна сесія\n"
         text += "• 💝 - Free donate (на ваш розсуд)\n\n"
         
-        if config.PAYMENT_CARD_NUMBER:
-            text += f"💳 <b>Номер картки:</b>\n<code>{config.PAYMENT_CARD_NUMBER}</code>\n\n"
+        # Використовуємо дані з БД якщо є, якщо немає - з .env
+        card_to_show = payment_card or config.PAYMENT_CARD_NUMBER
+        link_to_show = payment_link or config.PAYMENT_BANK_LINK
         
-        if config.PAYMENT_BANK_LINK:
-            text += f"🔗 <b>Посилання на банку:</b>\n{config.PAYMENT_BANK_LINK}\n\n"
+        if card_to_show:
+            text += f"💳 <b>Номер картки:</b>\n<code>{card_to_show}</code>\n\n"
+        
+        if link_to_show:
+            text += f"🔗 <b>Посилання на банку:</b>\n{link_to_show}\n\n"
         
         text += "ℹ️ При реєстрації на гру ви побачите вартість входу та умови оплати для кожної сесії."
     

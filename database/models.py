@@ -55,3 +55,11 @@ class Registration(SQLModel, table=True):
     session_id: int = Field(foreign_key="gamesession.id")
     registered_at: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = Field(default=True)
+
+
+class ClubSettings(SQLModel, table=True):
+    """Модель налаштувань клубу"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    setting_key: str = Field(unique=True, index=True)
+    setting_value: Optional[str] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
