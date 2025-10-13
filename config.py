@@ -21,7 +21,7 @@ ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(id.strip()) for id in ADMIN_IDS_STR.split(",") if id.strip()]
 
 # База даних
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./gameclub.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/gameclub.db")
 
 # Інформація про клуб
 CLUB_NAME = os.getenv("CLUB_NAME", "Герої на полицях")
