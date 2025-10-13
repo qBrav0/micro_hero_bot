@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, FSInputFile
+from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from datetime import date, time
@@ -51,6 +51,7 @@ class EditGameStates(StatesGroup):
 class EditClubInfoStates(StatesGroup):
     waiting_for_name = State()
     waiting_for_description = State()
+    waiting_for_about_text = State()
 
 
 # FSM стани для кіку гравця
@@ -501,7 +502,6 @@ async def view_admin_schedule(message: Message):
         text += "Оберіть сесію для управління:"
         
         # Створюємо клавіатуру з сесіями
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = []
         
         for game_session in sessions:
@@ -554,7 +554,6 @@ async def admin_manage_session(callback: CallbackQuery):
         text += f"👥 <b>Зареєстровано:</b> {len(registrations)}/{game.max_players}\n\n"
         text += "<b>Що ви хочете зробити?</b>"
         
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(
@@ -595,7 +594,6 @@ async def admin_back_schedule(callback: CallbackQuery):
         text += "Оберіть сесію для управління:"
         
         # Створюємо клавіатуру з сесіями
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = []
         
         for game_session in sessions:
@@ -836,10 +834,10 @@ async def edit_club_info_start(message: Message, state: FSMContext):
     text += f"<b>Поточний опис:</b> {CLUB_DESCRIPTION}\n\n"
     text += "Оберіть що хочете редагувати:"
     
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     keyboard = [
         [InlineKeyboardButton(text="📝 Назва клубу", callback_data="edit_club_name")],
         [InlineKeyboardButton(text="📄 Опис клубу", callback_data="edit_club_description")],
+        [InlineKeyboardButton(text="ℹ️ Текст 'Про ігротеку'", callback_data="edit_club_about")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
     ]
     
@@ -898,10 +896,14 @@ async def edit_club_name_process(message: Message, state: FSMContext):
         with open(env_file, 'w', encoding='utf-8') as f:
             f.writelines(updated_lines)
     
+    # Перезавантажуємо конфігурацію
+    from config import reload_config
+    reload_config()
+    
     await state.clear()
     await message.answer(
         f"✅ Назву клубу оновлено на: <b>{new_name}</b>\n\n"
-        "ℹ️ Зміни набудуть чинності після перезапуску бота.",
+        "ℹ️ Зміни застосовано без перезапуску бота.",
         parse_mode="HTML"
     )
 
@@ -954,10 +956,78 @@ async def edit_club_description_process(message: Message, state: FSMContext):
         with open(env_file, 'w', encoding='utf-8') as f:
             f.writelines(updated_lines)
     
+    # Перезавантажуємо конфігурацію
+    from config import reload_config
+    reload_config()
+    
     await state.clear()
     await message.answer(
         f"✅ Опис клубу оновлено:\n\n<b>{new_description}</b>\n\n"
-        "ℹ️ Зміни набудуть чинності після перезапуску бота.",
+        "ℹ️ Зміни застосовано без перезапуску бота.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "edit_club_about")
+@admin_only
+async def edit_club_about_start(callback: CallbackQuery, state: FSMContext):
+    """Почати редагування тексту 'Про ігротеку'"""
+    await state.set_state(EditClubInfoStates.waiting_for_about_text)
+    
+    await callback.message.edit_text(
+        "ℹ️ <b>Редагування тексту 'Про ігротеку'</b>\n\n"
+        "Надішліть новий повний текст для сторінки 'Про ігротеку':",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(EditClubInfoStates.waiting_for_about_text)
+@admin_only
+async def edit_club_about_process(message: Message, state: FSMContext):
+    """Обробити новий текст 'Про ігротеку'"""
+    new_about_text = message.text.strip()
+    
+    if len(new_about_text) < 20:
+        await message.answer("❌ Текст має бути довшим за 20 символів.")
+        return
+    
+    if len(new_about_text) > 1000:
+        await message.answer("❌ Текст не може бути довшим за 1000 символів.")
+        return
+    
+    # Оновлюємо конфігурацію
+    import os
+    env_file = ".env"
+    if os.path.exists(env_file):
+        # Читаємо поточний .env
+        with open(env_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Оновлюємо CLUB_ABOUT_TEXT
+        updated_lines = []
+        for line in lines:
+            if line.startswith('CLUB_ABOUT_TEXT='):
+                updated_lines.append(f'CLUB_ABOUT_TEXT="{new_about_text}"\n')
+            else:
+                updated_lines.append(line)
+        
+        # Якщо змінної немає, додаємо її
+        if not any(line.startswith('CLUB_ABOUT_TEXT=') for line in lines):
+            updated_lines.append(f'CLUB_ABOUT_TEXT="{new_about_text}"\n')
+        
+        # Записуємо оновлений .env
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.writelines(updated_lines)
+    
+    # Перезавантажуємо конфігурацію
+    from config import reload_config
+    reload_config()
+    
+    await state.clear()
+    await message.answer(
+        f"✅ Текст 'Про ігротеку' оновлено:\n\n<b>{new_about_text}</b>\n\n"
+        "ℹ️ Зміни застосовано без перезапуску бота.",
         parse_mode="HTML"
     )
 
@@ -1129,7 +1199,6 @@ async def admin_kick_player_reason(message: Message, state: FSMContext):
         
         text += "⚠️ Ви впевнені, що хочете кікнути цього гравця?"
         
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="✅ Так, кікнути", callback_data="confirm_kick"),

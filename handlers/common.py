@@ -20,14 +20,21 @@ async def back_to_menu(message: Message):
 @router.message(F.text == "ℹ️ Про ігротеку")
 async def about_club(message: Message):
     """Інформація про ігротеку"""
-    about_text = f"ℹ️ <b>{CLUB_NAME}</b>\n\n"
-    about_text += f"{CLUB_DESCRIPTION}\n\n"
-    about_text += "🎲 У нас ви можете:\n"
-    about_text += "• Грати в настільні ігри\n"
-    about_text += "• Знайомитися з новими людьми\n"
-    about_text += "• Відкривати для себе нові ігри\n"
-    about_text += "• Весело проводити час\n\n"
-    about_text += "📅 Слідкуйте за розкладом і записуйтесь на ігри через бота!"
+    from config import CLUB_ABOUT_TEXT
+    
+    if CLUB_ABOUT_TEXT:
+        # Використовуємо кастомний текст
+        about_text = CLUB_ABOUT_TEXT
+    else:
+        # Використовуємо стандартний текст
+        about_text = f"ℹ️ <b>{CLUB_NAME}</b>\n\n"
+        about_text += f"{CLUB_DESCRIPTION}\n\n"
+        about_text += "🎲 У нас ви можете:\n"
+        about_text += "• Грати в настільні ігри\n"
+        about_text += "• Знайомитися з новими людьми\n"
+        about_text += "• Відкривати для себе нові ігри\n"
+        about_text += "• Весело проводити час\n\n"
+        about_text += "📅 Слідкуйте за розкладом і записуйтесь на ігри через бота!"
     
     await message.answer(about_text, parse_mode="HTML")
 

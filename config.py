@@ -26,6 +26,16 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/gameclub.db
 # Інформація про клуб
 CLUB_NAME = os.getenv("CLUB_NAME", "Герої на полицях")
 CLUB_DESCRIPTION = os.getenv("CLUB_DESCRIPTION", "Ігротека настільних ігор")
+CLUB_ABOUT_TEXT = os.getenv("CLUB_ABOUT_TEXT", None)
+
+# Функція для динамічного оновлення конфігурації
+def reload_config():
+    """Перезавантажити конфігурацію з .env файлу"""
+    global CLUB_NAME, CLUB_DESCRIPTION, CLUB_ABOUT_TEXT
+    load_dotenv(override=True)
+    CLUB_NAME = os.getenv("CLUB_NAME", "Герої на полицях")
+    CLUB_DESCRIPTION = os.getenv("CLUB_DESCRIPTION", "Ігротека настільних ігор")
+    CLUB_ABOUT_TEXT = os.getenv("CLUB_ABOUT_TEXT", None)
 
 # Валідація конфігурації
 def validate_config():
