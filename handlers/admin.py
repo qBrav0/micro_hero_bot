@@ -13,6 +13,7 @@ from keyboards import (
 )
 from utils.decorators import admin_only
 from utils.validators import validate_time, validate_date, validate_players_count, validate_duration
+from utils.helpers import format_date, format_time
 from database.crud import get_game, get_registrations
 
 router = Router()
@@ -46,6 +47,18 @@ class EditGameStates(StatesGroup):
     waiting_for_image = State()
 
 
+# FSM стани для редагування інформації про клуб
+class EditClubInfoStates(StatesGroup):
+    waiting_for_name = State()
+    waiting_for_description = State()
+
+
+# FSM стани для кіку гравця
+class KickPlayerStates(StatesGroup):
+    waiting_for_reason = State()
+    waiting_for_confirmation = State()
+
+
 @router.message(F.text == "⚙️ Адмін-панель")
 @admin_only
 async def show_admin_panel(message: Message):
@@ -65,6 +78,14 @@ async def show_admin_panel(message: Message):
 async def back_to_admin_panel(message: Message):
     """Повернутися до адмін-панелі"""
     await show_admin_panel(message)
+
+
+@router.callback_query(F.data == "admin_back")
+@admin_only
+async def admin_back_callback(callback: CallbackQuery):
+    """Повернутися до адмін-панелі з callback"""
+    await show_admin_panel(callback.message)
+    await callback.answer()
 
 
 # ===== УПРАВЛІННЯ ІГРАМИ =====
@@ -538,7 +559,7 @@ async def admin_manage_session(callback: CallbackQuery):
             [
                 InlineKeyboardButton(
                     text="👥 Список гравців",
-                    callback_data=f"players_list_{session_id}"
+                    callback_data=f"admin_players_list_{session_id}"
                 )
             ],
             [
@@ -800,6 +821,425 @@ async def populate_test_games(message: Message):
         await message.answer(f"❌ Помилка при заповненні: {e}")
         import traceback
         await message.answer(f"Деталі: {traceback.format_exc()}")
+
+
+# ===== РЕДАГУВАННЯ ІНФОРМАЦІЇ ПРО КЛУБ =====
+
+@router.message(F.text == "ℹ️ Редагувати інформацію про клуб")
+@admin_only
+async def edit_club_info_start(message: Message, state: FSMContext):
+    """Почати редагування інформації про клуб"""
+    from config import CLUB_NAME, CLUB_DESCRIPTION
+    
+    text = "ℹ️ <b>Редагування інформації про клуб</b>\n\n"
+    text += f"<b>Поточна назва:</b> {CLUB_NAME}\n"
+    text += f"<b>Поточний опис:</b> {CLUB_DESCRIPTION}\n\n"
+    text += "Оберіть що хочете редагувати:"
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = [
+        [InlineKeyboardButton(text="📝 Назва клубу", callback_data="edit_club_name")],
+        [InlineKeyboardButton(text="📄 Опис клубу", callback_data="edit_club_description")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ]
+    
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "edit_club_name")
+@admin_only
+async def edit_club_name_start(callback: CallbackQuery, state: FSMContext):
+    """Почати редагування назви клубу"""
+    await state.set_state(EditClubInfoStates.waiting_for_name)
+    
+    await callback.message.edit_text(
+        "📝 <b>Редагування назви клубу</b>\n\n"
+        "Надішліть нову назву клубу:",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(EditClubInfoStates.waiting_for_name)
+@admin_only
+async def edit_club_name_process(message: Message, state: FSMContext):
+    """Обробити нову назву клубу"""
+    new_name = message.text.strip()
+    
+    if len(new_name) < 2:
+        await message.answer("❌ Назва клубу має бути довшою за 2 символи.")
+        return
+    
+    if len(new_name) > 100:
+        await message.answer("❌ Назва клубу не може бути довшою за 100 символів.")
+        return
+    
+    # Оновлюємо конфігурацію (в реальному проєкті це має бути в базі даних)
+    import os
+    env_file = ".env"
+    if os.path.exists(env_file):
+        # Читаємо поточний .env
+        with open(env_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Оновлюємо CLUB_NAME
+        updated_lines = []
+        for line in lines:
+            if line.startswith('CLUB_NAME='):
+                updated_lines.append(f'CLUB_NAME="{new_name}"\n')
+            else:
+                updated_lines.append(line)
+        
+        # Записуємо оновлений .env
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.writelines(updated_lines)
+    
+    await state.clear()
+    await message.answer(
+        f"✅ Назву клубу оновлено на: <b>{new_name}</b>\n\n"
+        "ℹ️ Зміни набудуть чинності після перезапуску бота.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "edit_club_description")
+@admin_only
+async def edit_club_description_start(callback: CallbackQuery, state: FSMContext):
+    """Почати редагування опису клубу"""
+    await state.set_state(EditClubInfoStates.waiting_for_description)
+    
+    await callback.message.edit_text(
+        "📄 <b>Редагування опису клубу</b>\n\n"
+        "Надішліть новий опис клубу:",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(EditClubInfoStates.waiting_for_description)
+@admin_only
+async def edit_club_description_process(message: Message, state: FSMContext):
+    """Обробити новий опис клубу"""
+    new_description = message.text.strip()
+    
+    if len(new_description) < 10:
+        await message.answer("❌ Опис клубу має бути довшим за 10 символів.")
+        return
+    
+    if len(new_description) > 500:
+        await message.answer("❌ Опис клубу не може бути довшим за 500 символів.")
+        return
+    
+    # Оновлюємо конфігурацію
+    import os
+    env_file = ".env"
+    if os.path.exists(env_file):
+        # Читаємо поточний .env
+        with open(env_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Оновлюємо CLUB_DESCRIPTION
+        updated_lines = []
+        for line in lines:
+            if line.startswith('CLUB_DESCRIPTION='):
+                updated_lines.append(f'CLUB_DESCRIPTION="{new_description}"\n')
+            else:
+                updated_lines.append(line)
+        
+        # Записуємо оновлений .env
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.writelines(updated_lines)
+    
+    await state.clear()
+    await message.answer(
+        f"✅ Опис клубу оновлено:\n\n<b>{new_description}</b>\n\n"
+        "ℹ️ Зміни набудуть чинності після перезапуску бота.",
+        parse_mode="HTML"
+    )
+
+
+# ===== КІК ГРАВЦЯ З СЕСІЇ =====
+
+@router.callback_query(F.data.startswith("admin_players_list_"))
+@admin_only
+async def admin_show_players_list(callback: CallbackQuery):
+    """Показати список гравців для адміна з можливістю кіку"""
+    session_id = int(callback.data.split("_")[-1])
+    
+    async for db_session in get_session():
+        # Отримуємо сесію
+        from sqlmodel import select
+        from database.models import GameSession, User
+        
+        result = await db_session.execute(
+            select(GameSession).where(GameSession.id == session_id)
+        )
+        game_session = result.scalar_one_or_none()
+        
+        if not game_session:
+            await callback.answer("Сесію не знайдено", show_alert=True)
+            return
+        
+        # Отримуємо гру
+        game = await get_game(db_session, game_session.game_id)
+        if not game:
+            await callback.answer("Гру не знайдено", show_alert=True)
+            return
+        
+        # Отримуємо реєстрації
+        registrations = await get_registrations(db_session, session_id, active_only=True)
+        
+        text = f"👥 <b>Список гравців (Адмін)</b>\n\n"
+        text += f"🎮 Гра: <b>{game.name}</b>\n"
+        text += f"📅 Дата: {format_date(game_session.date)}\n"
+        text += f"⏰ Час: {format_time(game_session.start_time)} - {format_time(game_session.end_time)}\n\n"
+        
+        if not registrations:
+            text += "Поки що ніхто не зареєстрований на цю гру."
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"admin_manage_session_{session_id}")]
+            ])
+        else:
+            text += f"<b>Зареєстровано: {len(registrations)}/{game.max_players}</b>\n\n"
+            
+            # Отримуємо інформацію про кожного гравця
+            keyboard_buttons = []
+            for i, reg in enumerate(registrations, 1):
+                result = await db_session.execute(
+                    select(User).where(User.id == reg.user_id)
+                )
+                player = result.scalar_one_or_none()
+                
+                if player:
+                    player_name = player.first_name
+                    if player.last_name:
+                        player_name += f" {player.last_name}"
+                    
+                    if player.username:
+                        text += f"{i}. @{player.username} ({player_name})\n"
+                    else:
+                        text += f"{i}. {player_name}\n"
+                    
+                    # Кнопка кіку для кожного гравця
+                    keyboard_buttons.append([
+                        InlineKeyboardButton(
+                            text=f"🚫 Кікнути {player_name}",
+                            callback_data=f"admin_kick_player_{session_id}_{reg.user_id}"
+                        )
+                    ])
+            
+            # Додаємо кнопку назад
+            keyboard_buttons.append([
+                InlineKeyboardButton(text="🔙 Назад", callback_data=f"admin_manage_session_{session_id}")
+            ])
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+        
+        await callback.message.edit_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_kick_player_"))
+@admin_only
+async def admin_kick_player_start(callback: CallbackQuery, state: FSMContext):
+    """Почати процес кіку гравця"""
+    parts = callback.data.split("_")
+    session_id = int(parts[3])
+    user_id = int(parts[4])
+    
+    # Зберігаємо дані в FSM
+    await state.update_data(session_id=session_id, user_id=user_id)
+    await state.set_state(KickPlayerStates.waiting_for_reason)
+    
+    await callback.message.edit_text(
+        "🚫 <b>Кік гравця з сесії</b>\n\n"
+        "Надішліть причину кіку (або напишіть 'пропустити' щоб не вказувати причину):",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(KickPlayerStates.waiting_for_reason)
+@admin_only
+async def admin_kick_player_reason(message: Message, state: FSMContext):
+    """Обробити причину кіку"""
+    reason = message.text.strip()
+    
+    if reason.lower() in ['пропустити', 'skip', 'немає', 'без причини']:
+        reason = None
+    
+    await state.update_data(reason=reason)
+    await state.set_state(KickPlayerStates.waiting_for_confirmation)
+    
+    # Отримуємо дані гравця
+    data = await state.get_data()
+    session_id = data['session_id']
+    user_id = data['user_id']
+    
+    async for db_session in get_session():
+        from sqlmodel import select
+        from database.models import User, GameSession
+        
+        # Отримуємо дані гравця
+        result = await db_session.execute(
+            select(User).where(User.id == user_id)
+        )
+        player = result.scalar_one_or_none()
+        
+        # Отримуємо дані сесії
+        result = await db_session.execute(
+            select(GameSession).where(GameSession.id == session_id)
+        )
+        game_session = result.scalar_one_or_none()
+        
+        if not player or not game_session:
+            await message.answer("❌ Помилка: гравець або сесія не знайдені.")
+            await state.clear()
+            return
+        
+        # Отримуємо гру
+        game = await get_game(db_session, game_session.game_id)
+        if not game:
+            await message.answer("❌ Помилка: гра не знайдена.")
+            await state.clear()
+            return
+        
+        player_name = player.first_name
+        if player.last_name:
+            player_name += f" {player.last_name}"
+        
+        text = f"🚫 <b>Підтвердження кіку</b>\n\n"
+        text += f"👤 Гравець: <b>{player_name}</b>\n"
+        text += f"🎮 Гра: <b>{game.name}</b>\n"
+        text += f"📅 Дата: {format_date(game_session.date)}\n"
+        text += f"⏰ Час: {format_time(game_session.start_time)}\n\n"
+        
+        if reason:
+            text += f"📝 Причина: <b>{reason}</b>\n\n"
+        else:
+            text += "📝 Причина: <b>не вказана</b>\n\n"
+        
+        text += "⚠️ Ви впевнені, що хочете кікнути цього гравця?"
+        
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Так, кікнути", callback_data="confirm_kick"),
+                InlineKeyboardButton(text="❌ Скасувати", callback_data="cancel_kick")
+            ]
+        ])
+        
+        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "confirm_kick")
+@admin_only
+async def admin_confirm_kick(callback: CallbackQuery, state: FSMContext):
+    """Підтвердити кік гравця"""
+    data = await state.get_data()
+    session_id = data['session_id']
+    user_id = data['user_id']
+    reason = data.get('reason')
+    
+    async for db_session in get_session():
+        from sqlmodel import select
+        from database.models import User, GameSession, Registration
+        
+        # Отримуємо дані гравця
+        result = await db_session.execute(
+            select(User).where(User.id == user_id)
+        )
+        player = result.scalar_one_or_none()
+        
+        # Отримуємо дані сесії
+        result = await db_session.execute(
+            select(GameSession).where(GameSession.id == session_id)
+        )
+        game_session = result.scalar_one_or_none()
+        
+        if not player or not game_session:
+            await callback.answer("❌ Помилка: гравець або сесія не знайдені.", show_alert=True)
+            await state.clear()
+            return
+        
+        # Отримуємо гру
+        game = await get_game(db_session, game_session.game_id)
+        if not game:
+            await callback.answer("❌ Помилка: гра не знайдена.", show_alert=True)
+            await state.clear()
+            return
+        
+        # Знаходимо реєстрацію
+        result = await db_session.execute(
+            select(Registration).where(
+                Registration.session_id == session_id,
+                Registration.user_id == user_id,
+                Registration.is_active == True
+            )
+        )
+        registration = result.scalar_one_or_none()
+        
+        if not registration:
+            await callback.answer("❌ Помилка: реєстрація не знайдена.", show_alert=True)
+            await state.clear()
+            return
+        
+        # Деактивуємо реєстрацію
+        registration.is_active = False
+        await db_session.commit()
+        
+        # Надсилаємо повідомлення гравцю
+        player_name = player.first_name
+        if player.last_name:
+            player_name += f" {player.last_name}"
+        
+        kick_message = f"🚫 <b>Вас кікнули з ігрової сесії</b>\n\n"
+        kick_message += f"🎮 Гра: <b>{game.name}</b>\n"
+        kick_message += f"📅 Дата: {format_date(game_session.date)}\n"
+        kick_message += f"⏰ Час: {format_time(game_session.start_time)}\n\n"
+        
+        if reason:
+            kick_message += f"📝 Причина: <b>{reason}</b>"
+        else:
+            kick_message += "📝 Причина не вказана"
+        
+        try:
+            from aiogram import Bot
+            from config import BOT_TOKEN
+            bot = Bot(token=BOT_TOKEN)
+            await bot.send_message(
+                chat_id=player.telegram_id,
+                text=kick_message,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            print(f"Помилка надсилання повідомлення гравцю: {e}")
+        
+        await callback.message.edit_text(
+            f"✅ Гравець <b>{player_name}</b> успішно кікнутий з сесії!\n\n"
+            f"📨 Повідомлення надіслано гравцю.",
+            parse_mode="HTML"
+        )
+        
+        await state.clear()
+        await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_kick")
+@admin_only
+async def admin_cancel_kick(callback: CallbackQuery, state: FSMContext):
+    """Скасувати кік гравця"""
+    await callback.message.edit_text("❌ Кік гравця скасовано.")
+    await state.clear()
+    await callback.answer()
 
 
 # ===== КОРИСТУВАЧІ =====
