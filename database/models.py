@@ -27,6 +27,15 @@ class Game(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class DayPricing(SQLModel, table=True):
+    """Модель ціноутворення за день"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: date = Field(unique=True, index=True)
+    adult_price: int  # ціна для дорослих в грн
+    child_price: int  # ціна для дітей до 18 років включно в грн
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class GameSession(SQLModel, table=True):
     """Модель сесії гри в розкладі"""
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -34,6 +43,7 @@ class GameSession(SQLModel, table=True):
     date: date
     start_time: time
     end_time: time
+    payment_type: str = Field(default="included")  # included, free, donate
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

@@ -20,6 +20,7 @@ class ScheduleService:
         date: date,
         start_time: str,
         end_time: str,
+        payment_type: str,
         created_by: int
     ) -> GameSession:
         """Створити нову сесію гри"""
@@ -29,6 +30,7 @@ class ScheduleService:
             date=date,
             start_time=start_time,
             end_time=end_time,
+            payment_type=payment_type,
             created_by=created_by
         )
     

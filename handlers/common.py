@@ -77,3 +77,30 @@ async def show_top_players(message: Message):
         text += "\n💡 Відвідуйте більше ігор, щоб потрапити в топ!"
         
         await message.answer(text, parse_mode="HTML")
+
+
+@router.message(F.text == "💳 Оплата")
+async def show_payment_info(message: Message):
+    """Показати інформацію про оплату"""
+    from config import PAYMENT_INFO, PAYMENT_CARD_NUMBER, PAYMENT_BANK_LINK
+    
+    if PAYMENT_INFO:
+        # Використовуємо кастомну інформацію
+        text = PAYMENT_INFO
+    else:
+        # Використовуємо стандартну інформацію
+        text = "💳 <b>Інформація про оплату</b>\n\n"
+        text += "📋 <b>Як це працює:</b>\n"
+        text += "• При створенні розкладу адміністратор вказує ціну входу на день\n"
+        text += "• Ціна відрізняється для дорослих та дітей до 18 років включно\n"
+        text += "• Деякі ігрові сесії можуть бути безкоштовними або за вільну ціну (donate)\n\n"
+        
+        if PAYMENT_CARD_NUMBER:
+            text += f"💳 <b>Номер картки:</b>\n<code>{PAYMENT_CARD_NUMBER}</code>\n\n"
+        
+        if PAYMENT_BANK_LINK:
+            text += f"🔗 <b>Посилання на банку:</b>\n{PAYMENT_BANK_LINK}\n\n"
+        
+        text += "ℹ️ При реєстрації на гру ви побачите вартість входу та умови оплати для кожної сесії."
+    
+    await message.answer(text, parse_mode="HTML")

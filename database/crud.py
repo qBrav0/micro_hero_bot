@@ -4,7 +4,7 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, or_
 
-from .models import User, Game, GameSession, Registration
+from .models import User, Game, GameSession, Registration, DayPricing
 
 
 # ===== USER CRUD =====
@@ -99,7 +99,7 @@ async def delete_game(session: AsyncSession, game_id: int) -> bool:
 # ===== GAME SESSION CRUD =====
 
 async def create_game_session(session: AsyncSession, game_id: int, date: date,
-                              start_time: str, end_time: str, created_by: int) -> GameSession:
+                              start_time: str, end_time: str, payment_type: str, created_by: int) -> GameSession:
     """Створити сесію гри"""
     from datetime import time as dt_time
     
@@ -112,6 +112,7 @@ async def create_game_session(session: AsyncSession, game_id: int, date: date,
         date=date,
         start_time=start,
         end_time=end,
+        payment_type=payment_type,
         created_by=created_by
     )
     session.add(game_session)
@@ -301,3 +302,42 @@ async def get_top_users_by_attended_sessions(session: AsyncSession, limit: int =
     )
     
     return result.all()
+
+
+# ===== DAY PRICING CRUD =====
+
+async def create_day_pricing(session: AsyncSession, date: date, adult_price: int, child_price: int) -> DayPricing:
+    """Створити ціноутворення для дня"""
+    pricing = DayPricing(
+        date=date,
+        adult_price=adult_price,
+        child_price=child_price
+    )
+    session.add(pricing)
+    await session.commit()
+    await session.refresh(pricing)
+    return pricing
+
+
+async def get_day_pricing(session: AsyncSession, date: date) -> Optional[DayPricing]:
+    """Отримати ціноутворення для дня"""
+    result = await session.execute(
+        select(DayPricing).where(DayPricing.date == date)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_day_pricing(session: AsyncSession, pricing_id: int, adult_price: int, child_price: int) -> Optional[DayPricing]:
+    """Оновити ціноутворення"""
+    result = await session.execute(
+        select(DayPricing).where(DayPricing.id == pricing_id)
+    )
+    pricing = result.scalar_one_or_none()
+    
+    if pricing:
+        pricing.adult_price = adult_price
+        pricing.child_price = child_price
+        await session.commit()
+        await session.refresh(pricing)
+    
+    return pricing

@@ -28,14 +28,22 @@ CLUB_NAME = os.getenv("CLUB_NAME", "Герої на полицях")
 CLUB_DESCRIPTION = os.getenv("CLUB_DESCRIPTION", "Ігротека настільних ігор")
 CLUB_ABOUT_TEXT = os.getenv("CLUB_ABOUT_TEXT", None)
 
+# Інформація про оплату
+PAYMENT_INFO = os.getenv("PAYMENT_INFO", None)
+PAYMENT_CARD_NUMBER = os.getenv("PAYMENT_CARD_NUMBER", "")
+PAYMENT_BANK_LINK = os.getenv("PAYMENT_BANK_LINK", "")
+
 # Функція для динамічного оновлення конфігурації
 def reload_config():
     """Перезавантажити конфігурацію з .env файлу"""
-    global CLUB_NAME, CLUB_DESCRIPTION, CLUB_ABOUT_TEXT
+    global CLUB_NAME, CLUB_DESCRIPTION, CLUB_ABOUT_TEXT, PAYMENT_INFO, PAYMENT_CARD_NUMBER, PAYMENT_BANK_LINK
     load_dotenv(override=True)
     CLUB_NAME = os.getenv("CLUB_NAME", "Герої на полицях")
     CLUB_DESCRIPTION = os.getenv("CLUB_DESCRIPTION", "Ігротека настільних ігор")
     CLUB_ABOUT_TEXT = os.getenv("CLUB_ABOUT_TEXT", None)
+    PAYMENT_INFO = os.getenv("PAYMENT_INFO", None)
+    PAYMENT_CARD_NUMBER = os.getenv("PAYMENT_CARD_NUMBER", "")
+    PAYMENT_BANK_LINK = os.getenv("PAYMENT_BANK_LINK", "")
 
 # Валідація конфігурації
 def validate_config():

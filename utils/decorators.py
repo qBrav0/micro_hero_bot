@@ -10,8 +10,11 @@ def admin_only(func: Callable) -> Callable:
     """Декоратор для обмеження доступу тільки для адміністраторів"""
     @wraps(func)
     async def wrapper(message_or_callback: Any, *args, **kwargs):
-        # Імпортуємо тут щоб уникнути циклічних імпортів
-        from config import ADMIN_IDS
+        # Перезавантажуємо ADMIN_IDS для отримання актуального списку
+        import config
+        import importlib
+        importlib.reload(config)
+        ADMIN_IDS = config.ADMIN_IDS
         
         user_id = None
         username = None
@@ -24,7 +27,7 @@ def admin_only(func: Callable) -> Callable:
             username = message_or_callback.from_user.username or message_or_callback.from_user.first_name
         
         if user_id not in ADMIN_IDS:
-            logger.warning(f"Спроба доступу до адмін функції від не-адміна: {username} (ID: {user_id})")
+            logger.warning(f"Спроба доступу до адмін функції від не-адміна: {username} (ID: {user_id}), ADMIN_IDS: {ADMIN_IDS}")
             if isinstance(message_or_callback, types.Message):
                 await message_or_callback.answer("❌ У вас немає доступу до цієї команди.")
             elif isinstance(message_or_callback, types.CallbackQuery):
