@@ -637,6 +637,26 @@ async def show_statistics(message: Message):
         await message.answer(text, parse_mode="HTML")
 
 
+# ===== ЗАПОВНЕННЯ ТЕСТОВИМИ ІГРАМИ =====
+
+@router.message(F.text == "🎲 Заповнити тестовими іграми")
+@admin_only
+async def populate_test_games(message: Message):
+    """Заповнити базу тестовими іграми"""
+    await message.answer("🎮 Запускаю заповнення тестовими іграми...")
+    
+    try:
+        # Імпортуємо та запускаємо скрипт
+        from populate_test_games import populate_games
+        import asyncio
+        
+        await populate_games()
+        await message.answer("✅ Тестові ігри успішно додано!")
+        
+    except Exception as e:
+        await message.answer(f"❌ Помилка при заповненні: {e}")
+
+
 # ===== КОРИСТУВАЧІ =====
 
 @router.message(F.text == "👥 Користувачі")

@@ -8,6 +8,7 @@ def get_admin_menu() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="📅 Управління розкладом")],
         [KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="👥 Користувачі")],
+        [KeyboardButton(text="🎲 Заповнити тестовими іграми")],
         [KeyboardButton(text="🏠 Головне меню")]
     ]
     
