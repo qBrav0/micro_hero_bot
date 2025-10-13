@@ -1059,13 +1059,25 @@ async def populate_test_games(message: Message):
 async def edit_club_info_start(message: Message, state: FSMContext):
     """Почати редагування інформації про клуб"""
     import config
+    from database import get_session, get_setting
+    
+    # Отримуємо поточні значення з БД
+    async for db_session in get_session():
+        club_name = await get_setting(db_session, "CLUB_NAME")
+        club_description = await get_setting(db_session, "CLUB_DESCRIPTION")
+    
+    # Використовуємо значення з БД якщо є, якщо немає - з .env
+    current_name = club_name or config.CLUB_NAME
+    current_description = club_description or config.CLUB_DESCRIPTION
     
     text = "ℹ️ <b>Редагування інформації про клуб</b>\n\n"
-    text += f"<b>Поточна назва:</b> {config.CLUB_NAME}\n"
-    text += f"<b>Поточний опис:</b> {config.CLUB_DESCRIPTION}\n\n"
+    text += f"<b>Поточна назва:</b> {current_name}\n"
+    text += f"<b>Поточний опис:</b> {current_description}\n\n"
     text += "Оберіть що хочете редагувати:"
     
     keyboard = [
+        [InlineKeyboardButton(text="🏢 Назва клубу", callback_data="edit_club_name")],
+        [InlineKeyboardButton(text="📝 Опис клубу", callback_data="edit_club_description")],
         [InlineKeyboardButton(text="ℹ️ Текст 'Про ігротеку'", callback_data="edit_club_about")],
         [InlineKeyboardButton(text="💳 Інформація про оплату", callback_data="edit_payment_info_menu")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
@@ -1106,29 +1118,10 @@ async def edit_club_name_process(message: Message, state: FSMContext):
         await message.answer("❌ Назва клубу не може бути довшою за 100 символів.")
         return
     
-    # Оновлюємо конфігурацію (в реальному проєкті це має бути в базі даних)
-    import os
-    env_file = ".env"
-    if os.path.exists(env_file):
-        # Читаємо поточний .env
-        with open(env_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        # Оновлюємо CLUB_NAME
-        updated_lines = []
-        for line in lines:
-            if line.startswith('CLUB_NAME='):
-                updated_lines.append(f'CLUB_NAME="{new_name}"\n')
-            else:
-                updated_lines.append(line)
-        
-        # Записуємо оновлений .env
-        with open(env_file, 'w', encoding='utf-8') as f:
-            f.writelines(updated_lines)
-    
-    # Перезавантажуємо конфігурацію
-    from config import reload_config
-    reload_config()
+    # Зберігаємо в базі даних
+    from database import get_session, set_setting
+    async for db_session in get_session():
+        await set_setting(db_session, "CLUB_NAME", new_name)
     
     await state.clear()
     await message.answer(
@@ -1166,29 +1159,10 @@ async def edit_club_description_process(message: Message, state: FSMContext):
         await message.answer("❌ Опис клубу не може бути довшим за 500 символів.")
         return
     
-    # Оновлюємо конфігурацію
-    import os
-    env_file = ".env"
-    if os.path.exists(env_file):
-        # Читаємо поточний .env
-        with open(env_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        # Оновлюємо CLUB_DESCRIPTION
-        updated_lines = []
-        for line in lines:
-            if line.startswith('CLUB_DESCRIPTION='):
-                updated_lines.append(f'CLUB_DESCRIPTION="{new_description}"\n')
-            else:
-                updated_lines.append(line)
-        
-        # Записуємо оновлений .env
-        with open(env_file, 'w', encoding='utf-8') as f:
-            f.writelines(updated_lines)
-    
-    # Перезавантажуємо конфігурацію
-    from config import reload_config
-    reload_config()
+    # Зберігаємо в базі даних
+    from database import get_session, set_setting
+    async for db_session in get_session():
+        await set_setting(db_session, "CLUB_DESCRIPTION", new_description)
     
     await state.clear()
     await message.answer(
@@ -1251,13 +1225,25 @@ async def edit_payment_info_menu(callback: CallbackQuery):
 async def back_to_club_info(callback: CallbackQuery):
     """Повернутися до меню редагування клубу"""
     import config
+    from database import get_session, get_setting
+    
+    # Отримуємо поточні значення з БД
+    async for db_session in get_session():
+        club_name = await get_setting(db_session, "CLUB_NAME")
+        club_description = await get_setting(db_session, "CLUB_DESCRIPTION")
+    
+    # Використовуємо значення з БД якщо є, якщо немає - з .env
+    current_name = club_name or config.CLUB_NAME
+    current_description = club_description or config.CLUB_DESCRIPTION
     
     text = "ℹ️ <b>Редагування інформації про клуб</b>\n\n"
-    text += f"<b>Поточна назва:</b> {config.CLUB_NAME}\n"
-    text += f"<b>Поточний опис:</b> {config.CLUB_DESCRIPTION}\n\n"
+    text += f"<b>Поточна назва:</b> {current_name}\n"
+    text += f"<b>Поточний опис:</b> {current_description}\n\n"
     text += "Оберіть що хочете редагувати:"
     
     keyboard = [
+        [InlineKeyboardButton(text="🏢 Назва клубу", callback_data="edit_club_name")],
+        [InlineKeyboardButton(text="📝 Опис клубу", callback_data="edit_club_description")],
         [InlineKeyboardButton(text="ℹ️ Текст 'Про ігротеку'", callback_data="edit_club_about")],
         [InlineKeyboardButton(text="💳 Інформація про оплату", callback_data="edit_payment_info_menu")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]

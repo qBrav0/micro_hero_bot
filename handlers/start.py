@@ -13,6 +13,7 @@ router = Router()
 async def cmd_start(message: Message):
     """Обробник команди /start"""
     import config
+    from database import get_setting
     
     user_id = message.from_user.id
     
@@ -34,8 +35,12 @@ async def cmd_start(message: Message):
                 is_admin=is_admin
             )
         
-        welcome_text = f"👋 Вітаємо в <b>{config.CLUB_NAME}</b>!\n\n"
-        welcome_text += f"{config.CLUB_DESCRIPTION}\n\n"
+        # Отримуємо назву та опис з БД (якщо є, якщо немає - з .env)
+        club_name = await get_setting(session, "CLUB_NAME") or config.CLUB_NAME
+        club_description = await get_setting(session, "CLUB_DESCRIPTION") or config.CLUB_DESCRIPTION
+        
+        welcome_text = f"👋 Вітаємо в <b>{club_name}</b>!\n\n"
+        welcome_text += f"{club_description}\n\n"
         welcome_text += "Оберіть дію з меню нижче:"
         
         await message.answer(

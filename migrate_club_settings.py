@@ -25,6 +25,8 @@ async def migrate():
     print("✅ База даних ініціалізована")
     
     # Отримуємо значення з .env
+    club_name = os.getenv("CLUB_NAME")
+    club_description = os.getenv("CLUB_DESCRIPTION")
     club_about_text = os.getenv("CLUB_ABOUT_TEXT")
     payment_info = os.getenv("PAYMENT_INFO")
     payment_card_number = os.getenv("PAYMENT_CARD_NUMBER")
@@ -34,6 +36,18 @@ async def migrate():
     print("\n💾 Міграція налаштувань з .env в базу даних...")
     
     async for session in get_session():
+        if club_name:
+            await set_setting(session, "CLUB_NAME", club_name)
+            print(f"✅ CLUB_NAME: збережено ({club_name})")
+        else:
+            print(f"ℹ️  CLUB_NAME: не знайдено в .env, пропущено")
+        
+        if club_description:
+            await set_setting(session, "CLUB_DESCRIPTION", club_description)
+            print(f"✅ CLUB_DESCRIPTION: збережено")
+        else:
+            print(f"ℹ️  CLUB_DESCRIPTION: не знайдено в .env, пропущено")
+        
         if club_about_text:
             await set_setting(session, "CLUB_ABOUT_TEXT", club_about_text)
             print(f"✅ CLUB_ABOUT_TEXT: збережено")

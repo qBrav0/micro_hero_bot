@@ -26,14 +26,19 @@ async def about_club(message: Message):
     # Спочатку намагаємося отримати з БД
     async for session in get_session():
         club_about_text = await get_setting(session, "CLUB_ABOUT_TEXT")
+        club_name = await get_setting(session, "CLUB_NAME")
+        club_description = await get_setting(session, "CLUB_DESCRIPTION")
     
     if club_about_text:
         # Використовуємо текст з БД
         about_text = club_about_text
     else:
         # Використовуємо стандартний текст з .env або дефолтний
-        about_text = f"ℹ️ <b>{config.CLUB_NAME}</b>\n\n"
-        about_text += f"{config.CLUB_DESCRIPTION}\n\n"
+        display_name = club_name or config.CLUB_NAME
+        display_description = club_description or config.CLUB_DESCRIPTION
+        
+        about_text = f"ℹ️ <b>{display_name}</b>\n\n"
+        about_text += f"{display_description}\n\n"
         about_text += "🎲 У нас ви можете:\n"
         about_text += "• Грати в настільні ігри\n"
         about_text += "• Знайомитися з новими людьми\n"
