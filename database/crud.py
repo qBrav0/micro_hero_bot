@@ -309,7 +309,7 @@ async def get_top_users_by_attended_sessions(session: AsyncSession, limit: int =
 async def create_day_pricing(session: AsyncSession, date: date, adult_price: int, child_price: int) -> DayPricing:
     """Створити ціноутворення для дня"""
     pricing = DayPricing(
-        date=date,
+        pricing_date=date,
         adult_price=adult_price,
         child_price=child_price
     )
@@ -322,7 +322,7 @@ async def create_day_pricing(session: AsyncSession, date: date, adult_price: int
 async def get_day_pricing(session: AsyncSession, date: date) -> Optional[DayPricing]:
     """Отримати ціноутворення для дня"""
     result = await session.execute(
-        select(DayPricing).where(DayPricing.date == date)
+        select(DayPricing).where(DayPricing.pricing_date == date)
     )
     return result.scalar_one_or_none()
 

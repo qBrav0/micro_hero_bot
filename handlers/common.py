@@ -95,6 +95,11 @@ async def show_payment_info(message: Message):
         text += "• Ціна відрізняється для дорослих та дітей до 18 років включно\n"
         text += "• Деякі ігрові сесії можуть бути безкоштовними або за вільну ціну (donate)\n\n"
         
+        text += "🎮 <b>Типи оплати для сесій:</b>\n"
+        text += "• ✅ - Входить в оплату за вхід\n"
+        text += "• 🎁 - Безкоштовна сесія\n"
+        text += "• 💝 - Free donate (на ваш розсуд)\n\n"
+        
         if PAYMENT_CARD_NUMBER:
             text += f"💳 <b>Номер картки:</b>\n<code>{PAYMENT_CARD_NUMBER}</code>\n\n"
         

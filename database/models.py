@@ -30,7 +30,7 @@ class Game(SQLModel, table=True):
 class DayPricing(SQLModel, table=True):
     """Модель ціноутворення за день"""
     id: Optional[int] = Field(default=None, primary_key=True)
-    date: date = Field(unique=True, index=True)
+    pricing_date: date = Field(unique=True, index=True)
     adult_price: int  # ціна для дорослих в грн
     child_price: int  # ціна для дітей до 18 років включно в грн
     created_at: datetime = Field(default_factory=datetime.utcnow)

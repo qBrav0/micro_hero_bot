@@ -2,6 +2,18 @@ from datetime import datetime, date, time
 from typing import Optional, Tuple
 
 
+def normalize_time(time_str: str) -> str:
+    """
+    Нормалізація часу до формату HH:MM
+    '9:00' -> '09:00'
+    """
+    try:
+        hours, minutes = map(int, time_str.split(':'))
+        return f"{hours:02d}:{minutes:02d}"
+    except (ValueError, AttributeError):
+        return time_str
+
+
 def validate_time(time_str: str) -> Tuple[bool, Optional[time], str]:
     """
     Валідація часу у форматі HH:MM

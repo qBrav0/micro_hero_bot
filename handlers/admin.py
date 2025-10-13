@@ -12,7 +12,7 @@ from keyboards import (
     get_games_list_keyboard, get_date_selection_keyboard, get_confirmation_keyboard
 )
 from utils.decorators import admin_only
-from utils.validators import validate_time, validate_date, validate_players_count, validate_duration
+from utils.validators import validate_time, validate_date, validate_players_count, validate_duration, normalize_time
 from utils.helpers import format_date, format_time
 from database.crud import get_game, get_registrations
 
@@ -82,15 +82,17 @@ async def show_admin_panel(message: Message):
 
 @router.message(F.text == "🔙 Назад до адмін-панелі")
 @admin_only
-async def back_to_admin_panel(message: Message):
+async def back_to_admin_panel(message: Message, state: FSMContext):
     """Повернутися до адмін-панелі"""
+    await state.clear()  # Очищаємо FSM стан
     await show_admin_panel(message)
 
 
 @router.callback_query(F.data == "admin_back")
 @admin_only
-async def admin_back_callback(callback: CallbackQuery):
+async def admin_back_callback(callback: CallbackQuery, state: FSMContext):
     """Повернутися до адмін-панелі з callback"""
+    await state.clear()  # Очищаємо FSM стан
     await show_admin_panel(callback.message)
     await callback.answer()
 
@@ -99,8 +101,14 @@ async def admin_back_callback(callback: CallbackQuery):
 
 @router.message(F.text == "🎮 Управління іграми")
 @admin_only
-async def show_games_management(message: Message):
+async def show_games_management(message: Message, state: FSMContext):
     """Показати меню управління іграми"""
+    # Перевіряємо чи не в процесі створення щось
+    current_state = await state.get_state()
+    if current_state is None:
+        # Тільки очищаємо якщо не в FSM процесі
+        await state.clear()
+    
     text = "🎮 <b>Управління іграми</b>\n\n"
     text += "Оберіть дію:"
     
@@ -342,8 +350,14 @@ async def show_game_edit_menu(callback: CallbackQuery):
 
 @router.message(F.text == "📅 Управління розкладом")
 @admin_only
-async def show_schedule_management(message: Message):
+async def show_schedule_management(message: Message, state: FSMContext):
     """Показати меню управління розкладом"""
+    # Перевіряємо чи не в процесі створення щось
+    current_state = await state.get_state()
+    if current_state is None:
+        # Тільки очищаємо якщо не в FSM процесі
+        await state.clear()
+    
     text = "📅 <b>Управління розкладом</b>\n\n"
     text += "Оберіть дію:"
     
@@ -369,19 +383,46 @@ async def start_create_schedule(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("select_date_"))
+@admin_only
 async def process_date_selection(callback: CallbackQuery, state: FSMContext):
     """Обробка вибору дати"""
     date_str = callback.data.split("_")[-1]
     selected_date = date.fromisoformat(date_str)
     
     await state.update_data(date=selected_date)
-    await state.set_state(CreateScheduleStates.waiting_for_start_time)
     
-    await callback.message.edit_text(
-        f"📅 Дата: <b>{selected_date.strftime('%d.%m.%Y')}</b>\n\n"
-        "⏰ Введіть час початку (ЧЧ:ХХ):",
-        parse_mode="HTML"
-    )
+    # Перевіряємо чи вже є ціна для цього дня
+    from database import get_session, get_day_pricing
+    async for db_session in get_session():
+        pricing = await get_day_pricing(db_session, selected_date)
+        
+        if pricing:
+            # Ціна вже встановлена
+            await state.update_data(
+                adult_price=pricing.adult_price,
+                child_price=pricing.child_price,
+                pricing_exists=True
+            )
+            await state.set_state(CreateScheduleStates.waiting_for_start_time)
+            await callback.message.edit_text(
+                f"📅 Дата: <b>{selected_date.strftime('%d.%m.%Y')}</b>\n\n"
+                f"💰 Ціни на цей день вже встановлені:\n"
+                f"• Дорослі: {pricing.adult_price} грн\n"
+                f"• Діти до 18: {pricing.child_price} грн\n\n"
+                f"⏰ Введіть час початку (ЧЧ:ХХ):",
+                parse_mode="HTML"
+            )
+        else:
+            # Перша сесія на цей день - встановлюємо ціни
+            await state.update_data(pricing_exists=False)
+            await state.set_state(CreateScheduleStates.waiting_for_adult_price)
+            await callback.message.edit_text(
+                f"📅 Дата: <b>{selected_date.strftime('%d.%m.%Y')}</b>\n\n"
+                f"💰 Це перша сесія на цей день.\n\n"
+                f"Введіть ціну входу для дорослих (в грн):",
+                parse_mode="HTML"
+            )
+    
     await callback.answer()
 
 
@@ -426,6 +467,7 @@ async def process_custom_date(message: Message, state: FSMContext):
 
 
 @router.message(CreateScheduleStates.waiting_for_adult_price)
+@admin_only
 async def process_adult_price(message: Message, state: FSMContext):
     """Обробка ціни для дорослих"""
     try:
@@ -442,6 +484,7 @@ async def process_adult_price(message: Message, state: FSMContext):
 
 
 @router.message(CreateScheduleStates.waiting_for_child_price)
+@admin_only
 async def process_child_price(message: Message, state: FSMContext):
     """Обробка ціни для дітей"""
     try:
@@ -466,7 +509,8 @@ async def process_start_time(message: Message, state: FSMContext):
         await message.answer(error_msg)
         return
     
-    await state.update_data(start_time=message.text)
+    normalized_time = normalize_time(message.text)
+    await state.update_data(start_time=normalized_time)
     await state.set_state(CreateScheduleStates.waiting_for_end_time)
     await message.answer("⏰ Введіть час закінчення (ЧЧ:ХХ):")
 
@@ -489,49 +533,32 @@ async def process_end_time(message: Message, state: FSMContext):
         await message.answer("⚠️ Час закінчення повинен бути пізніше часу початку")
         return
     
-    await state.update_data(end_time=message.text)
+    normalized_time = normalize_time(message.text)
+    await state.update_data(end_time=normalized_time)
+    await state.set_state(CreateScheduleStates.waiting_for_game)
     
-    # Якщо це перша сесія, тип оплати "included"
-    # Якщо не перша - даємо вибір
-    data = await state.get_data()
-    pricing_exists = data.get("pricing_exists", False)
+    # Показуємо список ігор
+    async for session in get_session():
+        games = await GameService.get_all_active_games(session)
     
-    if pricing_exists:
-        # Вже є ціна на цей день - даємо вибір типу оплати
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Входить в оплату за вхід", callback_data="payment_included")],
-            [InlineKeyboardButton(text="🎁 Безкоштовна", callback_data="payment_free")],
-            [InlineKeyboardButton(text="💝 Free donate", callback_data="payment_donate")]
-        ])
-        await state.set_state(CreateScheduleStates.waiting_for_payment_type)
-        await message.answer("💳 Оберіть тип оплати для цієї сесії:", reply_markup=keyboard)
-    else:
-        # Перша сесія - оплата включена за замовчуванням
-        await state.update_data(payment_type="included")
-        await state.set_state(CreateScheduleStates.waiting_for_game)
+    if not games:
+        await message.answer(
+            "❌ Немає доступних ігор. Спочатку додайте хоча б одну гру.",
+            reply_markup=get_admin_schedule_menu()
+        )
+        await state.clear()
+        return
     
-    # Показуємо список ігор тільки якщо не чекаємо на вибір типу оплати
-    if not pricing_exists:
-        async for session in get_session():
-            games = await GameService.get_all_active_games(session)
-        
-        if not games:
-            await message.answer(
-                "❌ Немає доступних ігор. Спочатку додайте хоча б одну гру.",
-                reply_markup=get_admin_schedule_menu()
-            )
-            await state.clear()
-            return
-        
-        text = "🎮 Оберіть гру зі списку:"
-        keyboard = get_games_list_keyboard(games, for_schedule=True)
-        
-        await message.answer(text, reply_markup=keyboard)
+    text = "🎮 Оберіть гру зі списку:"
+    keyboard = get_games_list_keyboard(games, for_schedule=True)
+    
+    await message.answer(text, reply_markup=keyboard)
 
 
 @router.callback_query(F.data.in_(["payment_included", "payment_free", "payment_donate"]))
+@admin_only
 async def process_payment_type(callback: CallbackQuery, state: FSMContext):
-    """Обробка вибору типу оплати"""
+    """Обробка вибору типу оплати та створення сесії"""
     payment_types = {
         "payment_included": "included",
         "payment_free": "free",
@@ -539,41 +566,11 @@ async def process_payment_type(callback: CallbackQuery, state: FSMContext):
     }
     
     payment_type = payment_types[callback.data]
-    await state.update_data(payment_type=payment_type)
-    await state.set_state(CreateScheduleStates.waiting_for_game)
-    
-    # Показуємо список ігор
-    async for session in get_session():
-        games = await GameService.get_all_active_games(session)
-        
-        if not games:
-            await callback.message.edit_text(
-                "❌ Немає доступних ігор. Спочатку додайте хоча б одну гру."
-            )
-            await state.clear()
-            await callback.answer()
-            return
-        
-        keyboard = get_games_list_keyboard(games, "schedule_select_game", current_page=0)
-        await callback.message.edit_text(
-            "🎮 Оберіть гру зі списку:",
-            reply_markup=keyboard
-        )
-    
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("schedule_select_game_"))
-async def process_game_selection(callback: CallbackQuery, state: FSMContext):
-    """Обробка вибору гри для розкладу"""
-    game_id = int(callback.data.split("_")[-1])
-    
     data = await state.get_data()
     user_telegram_id = callback.from_user.id
     
     async for session in get_session():
-        # Отримуємо user з бази даних
-        from database import get_user_by_telegram_id, create_day_pricing
+        from database import get_user_by_telegram_id
         user = await get_user_by_telegram_id(session, user_telegram_id)
         
         if not user:
@@ -581,28 +578,18 @@ async def process_game_selection(callback: CallbackQuery, state: FSMContext):
             await state.clear()
             return
         
-        # Створюємо ціноутворення для дня, якщо це перша сесія
-        pricing_exists = data.get("pricing_exists", False)
-        if not pricing_exists:
-            await create_day_pricing(
-                session=session,
-                date=data["date"],
-                adult_price=data["adult_price"],
-                child_price=data["child_price"]
-            )
-        
-        # Створюємо сесію з типом оплати
+        # Створюємо сесію з обраним типом оплати
         game_session = await ScheduleService.create_session(
             session=session,
-            game_id=game_id,
+            game_id=data["game_id"],
             date=data["date"],
             start_time=data["start_time"],
             end_time=data["end_time"],
-            payment_type=data.get("payment_type", "included"),
+            payment_type=payment_type,
             created_by=user.id
         )
         
-        game = await get_game(session, game_id)
+        game = await get_game(session, data["game_id"])
         
         payment_type_text = {
             "included": "✅ Входить в оплату за вхід",
@@ -614,12 +601,92 @@ async def process_game_selection(callback: CallbackQuery, state: FSMContext):
             f"✅ Гру <b>{game.name}</b> успішно додано в розклад!\n\n"
             f"📅 Дата: {data['date'].strftime('%d.%m.%Y')}\n"
             f"⏰ Час: {data['start_time']} - {data['end_time']}\n"
-            f"💳 Оплата: {payment_type_text.get(data.get('payment_type', 'included'), 'Входить в оплату')}",
+            f"💳 Оплата: {payment_type_text.get(payment_type, 'Входить в оплату')}",
             parse_mode="HTML"
         )
     
     await state.clear()
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("schedule_select_game_"))
+@admin_only
+async def process_game_selection(callback: CallbackQuery, state: FSMContext):
+    """Обробка вибору гри для розкладу"""
+    game_id = int(callback.data.split("_")[-1])
+    
+    data = await state.get_data()
+    await state.update_data(game_id=game_id)
+    
+    # Перевіряємо чи це перша сесія на цей день
+    pricing_exists = data.get("pricing_exists", False)
+    
+    if pricing_exists:
+        # Не перша сесія - запитуємо тип оплати
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Входить в оплату за вхід", callback_data="payment_included")],
+            [InlineKeyboardButton(text="🎁 Безкоштовна", callback_data="payment_free")],
+            [InlineKeyboardButton(text="💝 Free donate", callback_data="payment_donate")]
+        ])
+        
+        async for session in get_session():
+            game = await get_game(session, game_id)
+            
+            await callback.message.edit_text(
+                f"🎮 Гра: <b>{game.name}</b>\n"
+                f"📅 Дата: {data['date'].strftime('%d.%m.%Y')}\n"
+                f"⏰ Час: {data['start_time']} - {data['end_time']}\n\n"
+                f"💳 Оберіть тип оплати для цієї сесії:",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        
+        await callback.answer()
+    else:
+        # Перша сесія - створюємо відразу з типом "included"
+        user_telegram_id = callback.from_user.id
+        
+        async for session in get_session():
+            from database import get_user_by_telegram_id, create_day_pricing
+            user = await get_user_by_telegram_id(session, user_telegram_id)
+            
+            if not user:
+                await callback.answer("❌ Помилка: користувача не знайдено", show_alert=True)
+                await state.clear()
+                return
+            
+            # Створюємо ціноутворення для дня
+            if "adult_price" in data and "child_price" in data:
+                await create_day_pricing(
+                    session=session,
+                    date=data["date"],
+                    adult_price=data["adult_price"],
+                    child_price=data["child_price"]
+                )
+            
+            # Створюємо сесію з типом оплати "included"
+            game_session = await ScheduleService.create_session(
+                session=session,
+                game_id=game_id,
+                date=data["date"],
+                start_time=data["start_time"],
+                end_time=data["end_time"],
+                payment_type="included",
+                created_by=user.id
+            )
+            
+            game = await get_game(session, game_id)
+            
+            await callback.message.edit_text(
+                f"✅ Гру <b>{game.name}</b> успішно додано в розклад!\n\n"
+                f"📅 Дата: {data['date'].strftime('%d.%m.%Y')}\n"
+                f"⏰ Час: {data['start_time']} - {data['end_time']}\n"
+                f"💳 Оплата: ✅ Входить в оплату за вхід",
+                parse_mode="HTML"
+            )
+        
+        await state.clear()
+        await callback.answer()
 
 
 @router.message(F.text == "📋 Переглянути розклад")
@@ -970,8 +1037,6 @@ async def edit_club_info_start(message: Message, state: FSMContext):
     text += "Оберіть що хочете редагувати:"
     
     keyboard = [
-        [InlineKeyboardButton(text="📝 Назва клубу", callback_data="edit_club_name")],
-        [InlineKeyboardButton(text="📄 Опис клубу", callback_data="edit_club_description")],
         [InlineKeyboardButton(text="ℹ️ Текст 'Про ігротеку'", callback_data="edit_club_about")],
         [InlineKeyboardButton(text="💳 Інформація про оплату", callback_data="edit_payment_info_menu")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
