@@ -140,6 +140,13 @@ async def populate_games():
     
     # Додаємо кожну гру
     async for session in get_session():
+        # Перевіряємо чи вже є ігри в базі
+        existing_games = await GameService.get_all_active_games(session)
+        if existing_games:
+            print(f"⚠️  В базі вже є {len(existing_games)} ігор. Пропускаємо заповнення.")
+            return
+        
+        print(f"📝 База порожня. Додаємо {len(TEST_GAMES)} тестових ігор...")
         added_count = 0
         
         for game_data in TEST_GAMES:
