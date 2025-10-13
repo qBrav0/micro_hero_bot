@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message
 from keyboards import get_main_menu
-from config import ADMIN_IDS, CLUB_NAME, CLUB_DESCRIPTION
+from config import ADMIN_IDS
 
 router = Router()
 
@@ -20,15 +20,15 @@ async def back_to_menu(message: Message):
 @router.message(F.text == "ℹ️ Про ігротеку")
 async def about_club(message: Message):
     """Інформація про ігротеку"""
-    from config import CLUB_ABOUT_TEXT, CLUB_NAME, CLUB_DESCRIPTION
+    import config
     
-    if CLUB_ABOUT_TEXT:
+    if config.CLUB_ABOUT_TEXT:
         # Використовуємо кастомний текст
-        about_text = CLUB_ABOUT_TEXT
+        about_text = config.CLUB_ABOUT_TEXT
     else:
         # Використовуємо стандартний текст
-        about_text = f"ℹ️ <b>{CLUB_NAME}</b>\n\n"
-        about_text += f"{CLUB_DESCRIPTION}\n\n"
+        about_text = f"ℹ️ <b>{config.CLUB_NAME}</b>\n\n"
+        about_text += f"{config.CLUB_DESCRIPTION}\n\n"
         about_text += "🎲 У нас ви можете:\n"
         about_text += "• Грати в настільні ігри\n"
         about_text += "• Знайомитися з новими людьми\n"
@@ -82,11 +82,11 @@ async def show_top_players(message: Message):
 @router.message(F.text == "💳 Оплата")
 async def show_payment_info(message: Message):
     """Показати інформацію про оплату"""
-    from config import PAYMENT_INFO, PAYMENT_CARD_NUMBER, PAYMENT_BANK_LINK
+    import config
     
-    if PAYMENT_INFO:
+    if config.PAYMENT_INFO:
         # Використовуємо кастомну інформацію
-        text = PAYMENT_INFO
+        text = config.PAYMENT_INFO
     else:
         # Використовуємо стандартну інформацію
         text = "💳 <b>Інформація про оплату</b>\n\n"
@@ -100,11 +100,11 @@ async def show_payment_info(message: Message):
         text += "• 🎁 - Безкоштовна сесія\n"
         text += "• 💝 - Free donate (на ваш розсуд)\n\n"
         
-        if PAYMENT_CARD_NUMBER:
-            text += f"💳 <b>Номер картки:</b>\n<code>{PAYMENT_CARD_NUMBER}</code>\n\n"
+        if config.PAYMENT_CARD_NUMBER:
+            text += f"💳 <b>Номер картки:</b>\n<code>{config.PAYMENT_CARD_NUMBER}</code>\n\n"
         
-        if PAYMENT_BANK_LINK:
-            text += f"🔗 <b>Посилання на банку:</b>\n{PAYMENT_BANK_LINK}\n\n"
+        if config.PAYMENT_BANK_LINK:
+            text += f"🔗 <b>Посилання на банку:</b>\n{config.PAYMENT_BANK_LINK}\n\n"
         
         text += "ℹ️ При реєстрації на гру ви побачите вартість входу та умови оплати для кожної сесії."
     

@@ -4,7 +4,7 @@ from aiogram.filters import CommandStart, Command
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_session, get_user_by_telegram_id, create_user
 from keyboards import get_main_menu
-from config import ADMIN_IDS, CLUB_NAME, CLUB_DESCRIPTION
+from config import ADMIN_IDS
 
 router = Router()
 
@@ -12,6 +12,8 @@ router = Router()
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     """Обробник команди /start"""
+    import config
+    
     user_id = message.from_user.id
     
     # Отримуємо сесію БД
@@ -32,8 +34,8 @@ async def cmd_start(message: Message):
                 is_admin=is_admin
             )
         
-        welcome_text = f"👋 Вітаємо в <b>{CLUB_NAME}</b>!\n\n"
-        welcome_text += f"{CLUB_DESCRIPTION}\n\n"
+        welcome_text = f"👋 Вітаємо в <b>{config.CLUB_NAME}</b>!\n\n"
+        welcome_text += f"{config.CLUB_DESCRIPTION}\n\n"
         welcome_text += "Оберіть дію з меню нижче:"
         
         await message.answer(

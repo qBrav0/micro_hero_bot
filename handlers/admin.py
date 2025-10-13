@@ -1058,11 +1058,11 @@ async def populate_test_games(message: Message):
 @admin_only
 async def edit_club_info_start(message: Message, state: FSMContext):
     """Почати редагування інформації про клуб"""
-    from config import CLUB_NAME, CLUB_DESCRIPTION
+    import config
     
     text = "ℹ️ <b>Редагування інформації про клуб</b>\n\n"
-    text += f"<b>Поточна назва:</b> {CLUB_NAME}\n"
-    text += f"<b>Поточний опис:</b> {CLUB_DESCRIPTION}\n\n"
+    text += f"<b>Поточна назва:</b> {config.CLUB_NAME}\n"
+    text += f"<b>Поточний опис:</b> {config.CLUB_DESCRIPTION}\n\n"
     text += "Оберіть що хочете редагувати:"
     
     keyboard = [
@@ -1216,13 +1216,13 @@ async def edit_club_about_start(callback: CallbackQuery, state: FSMContext):
 @admin_only
 async def edit_payment_info_menu(callback: CallbackQuery):
     """Меню редагування інформації про оплату"""
-    from config import PAYMENT_INFO, PAYMENT_CARD_NUMBER, PAYMENT_BANK_LINK
+    import config
     
     text = "💳 <b>Редагування інформації про оплату</b>\n\n"
     text += f"<b>Поточна інформація:</b>\n"
-    text += f"• Текст: {'Встановлено' if PAYMENT_INFO else 'Не встановлено'}\n"
-    text += f"• Номер картки: {PAYMENT_CARD_NUMBER or 'Не встановлено'}\n"
-    text += f"• Посилання на банку: {PAYMENT_BANK_LINK or 'Не встановлено'}\n\n"
+    text += f"• Текст: {'Встановлено' if config.PAYMENT_INFO else 'Не встановлено'}\n"
+    text += f"• Номер картки: {config.PAYMENT_CARD_NUMBER or 'Не встановлено'}\n"
+    text += f"• Посилання на банку: {config.PAYMENT_BANK_LINK or 'Не встановлено'}\n\n"
     text += "Оберіть що хочете редагувати:"
     
     keyboard = [
@@ -1244,11 +1244,11 @@ async def edit_payment_info_menu(callback: CallbackQuery):
 @admin_only
 async def back_to_club_info(callback: CallbackQuery):
     """Повернутися до меню редагування клубу"""
-    from config import CLUB_NAME, CLUB_DESCRIPTION
+    import config
     
     text = "ℹ️ <b>Редагування інформації про клуб</b>\n\n"
-    text += f"<b>Поточна назва:</b> {CLUB_NAME}\n"
-    text += f"<b>Поточний опис:</b> {CLUB_DESCRIPTION}\n\n"
+    text += f"<b>Поточна назва:</b> {config.CLUB_NAME}\n"
+    text += f"<b>Поточний опис:</b> {config.CLUB_DESCRIPTION}\n\n"
     text += "Оберіть що хочете редагувати:"
     
     keyboard = [
