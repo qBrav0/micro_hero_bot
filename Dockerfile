@@ -25,16 +25,9 @@ RUN mkdir -p /app/data /app/logs /app/static/images
 # Встановлюємо змінну середовища для Python
 ENV PYTHONUNBUFFERED=1
 
-# Створюємо скрипт запуску
-RUN echo '#!/bin/bash\n\
-set -e\n\
-echo "🚀 Запуск бота..."\n\
-echo "📊 Ініціалізація бази даних..."\n\
-python -c "from database.database import init_db; import asyncio; asyncio.run(init_db())" || echo "❌ Помилка ініціалізації БД"\n\
-echo "🎮 Заповнення тестовими іграми..."\n\
-python populate_test_games.py || echo "❌ Помилка заповнення ігор"\n\
-echo "🤖 Запуск бота..."\n\
-python main.py' > /app/start.sh && chmod +x /app/start.sh
+# Копіюємо скрипт запуску
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
 # Запускаємо через скрипт
 CMD ["/app/start.sh"]
