@@ -20,6 +20,11 @@ async_session = sessionmaker(
 
 async def init_db():
     """Ініціалізація бази даних"""
+    # Створюємо папку data якщо її немає
+    data_dir = os.path.dirname(DATABASE_URL.replace("sqlite+aiosqlite:///", ""))
+    if data_dir and not os.path.exists(data_dir):
+        os.makedirs(data_dir, exist_ok=True)
+    
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
