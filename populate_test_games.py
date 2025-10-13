@@ -134,9 +134,15 @@ async def populate_games():
     """Заповнити базу тестовими іграми"""
     print("🎮 Початок заповнення бази тестовими іграми...")
     
-    # Ініціалізуємо базу
-    await init_db()
-    print("✅ База даних ініціалізована")
+    try:
+        # Ініціалізуємо базу
+        await init_db()
+        print("✅ База даних ініціалізована")
+    except Exception as e:
+        print(f"❌ Помилка ініціалізації БД: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     # Додаємо кожну гру
     async for session in get_session():
