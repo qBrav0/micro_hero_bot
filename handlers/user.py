@@ -67,7 +67,19 @@ async def show_date_sessions(callback: CallbackQuery):
             await callback.answer("На цю дату немає ігор", show_alert=True)
             return
         
+        # Отримуємо ціни на цей день
+        from database import get_day_pricing
+        day_pricing = await get_day_pricing(session, selected_date)
+        
         text = f"📅 <b>{format_date(selected_date)}</b>\n\n"
+        
+        # Показуємо ціни на день
+        if day_pricing:
+            text += f"💰 <b>Вхід на день:</b>\n"
+            text += f"   • Дорослі: {day_pricing.adult_price} грн\n"
+            text += f"   • Діти до 18: {day_pricing.child_price} грн\n\n"
+        
+        text += "<b>Ігрові сесії:</b>\n"
         
         # Створюємо клавіатуру з іграми
         keyboard = []
@@ -79,7 +91,14 @@ async def show_date_sessions(callback: CallbackQuery):
             registrations = await get_registrations(session, game_session.id, active_only=True)
             players_count = len(registrations)
             
-            game_info = f"🎮 {game.name} • {format_time(game_session.start_time)}"
+            # Додаємо іконку типу оплати
+            payment_icon = {
+                "included": "✅",
+                "free": "🎁",
+                "donate": "💝"
+            }
+            
+            game_info = f"{payment_icon.get(game_session.payment_type, '✅')} {game.name} • {format_time(game_session.start_time)}"
             game_info += f" • {players_count}/{game.max_players}"
             
             keyboard.append([{
@@ -139,6 +158,10 @@ async def view_session_details(callback: CallbackQuery):
             )
             is_admin = user.is_admin
         
+        # Отримуємо ціни на день
+        from database import get_day_pricing
+        day_pricing = await get_day_pricing(db_session, game_session.date)
+        
         # Формуємо текст
         text = f"🎮 <b>{game.name}</b>\n\n"
         text += f"📝 {game.description}\n\n"
@@ -146,6 +169,21 @@ async def view_session_details(callback: CallbackQuery):
         text += f"⏰ <b>Час:</b> {format_time(game_session.start_time)} - {format_time(game_session.end_time)}\n"
         text += f"👥 <b>Гравців:</b> {game.min_players}-{game.max_players}\n"
         text += f"⏱️ <b>Тривалість:</b> ~{game.avg_duration} хв\n\n"
+        
+        # Показуємо ціни на день
+        if day_pricing:
+            text += f"💰 <b>Вхід на день:</b>\n"
+            text += f"   • Дорослі: {day_pricing.adult_price} грн\n"
+            text += f"   • Діти до 18: {day_pricing.child_price} грн\n\n"
+        
+        # Показуємо тип оплати для сесії
+        payment_type_text = {
+            "included": "✅ Входить в оплату за вхід",
+            "free": "🎁 Безкоштовна",
+            "donate": "💝 Free donate"
+        }
+        text += f"💳 <b>Оплата гри:</b> {payment_type_text.get(game_session.payment_type, 'Входить в оплату')}\n\n"
+        
         text += f"📊 <b>Зареєстровано:</b> {players_count}/{game.max_players}\n"
         
         if is_registered:

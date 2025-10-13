@@ -55,6 +55,9 @@ class EditClubInfoStates(StatesGroup):
     waiting_for_name = State()
     waiting_for_description = State()
     waiting_for_about_text = State()
+    waiting_for_payment_info = State()
+    waiting_for_card_number = State()
+    waiting_for_bank_link = State()
 
 
 # FSM стани для кіку гравця
@@ -970,6 +973,7 @@ async def edit_club_info_start(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="📝 Назва клубу", callback_data="edit_club_name")],
         [InlineKeyboardButton(text="📄 Опис клубу", callback_data="edit_club_description")],
         [InlineKeyboardButton(text="ℹ️ Текст 'Про ігротеку'", callback_data="edit_club_about")],
+        [InlineKeyboardButton(text="💳 Інформація про оплату", callback_data="edit_payment_info_menu")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
     ]
     
@@ -1114,6 +1118,42 @@ async def edit_club_about_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.callback_query(F.data == "edit_payment_info_menu")
+@admin_only
+async def edit_payment_info_menu(callback: CallbackQuery):
+    """Меню редагування інформації про оплату"""
+    from config import PAYMENT_INFO, PAYMENT_CARD_NUMBER, PAYMENT_BANK_LINK
+    
+    text = "💳 <b>Редагування інформації про оплату</b>\n\n"
+    text += f"<b>Поточна інформація:</b>\n"
+    text += f"• Текст: {'Встановлено' if PAYMENT_INFO else 'Не встановлено'}\n"
+    text += f"• Номер картки: {PAYMENT_CARD_NUMBER or 'Не встановлено'}\n"
+    text += f"• Посилання на банку: {PAYMENT_BANK_LINK or 'Не встановлено'}\n\n"
+    text += "Оберіть що хочете редагувати:"
+    
+    keyboard = [
+        [InlineKeyboardButton(text="📝 Текст інформації про оплату", callback_data="edit_payment_text")],
+        [InlineKeyboardButton(text="💳 Номер картки", callback_data="edit_card_number")],
+        [InlineKeyboardButton(text="🔗 Посилання на банку", callback_data="edit_bank_link")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_club_info")]
+    ]
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_club_info")
+@admin_only
+async def back_to_club_info(callback: CallbackQuery):
+    """Повернутися до меню редагування клубу"""
+    await edit_club_info(callback.message)
+    await callback.answer()
+
+
 @router.message(EditClubInfoStates.waiting_for_about_text)
 @admin_only
 async def edit_club_about_process(message: Message, state: FSMContext):
@@ -1159,6 +1199,159 @@ async def edit_club_about_process(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         f"✅ Текст 'Про ігротеку' оновлено:\n\n<b>{new_about_text}</b>\n\n"
+        "ℹ️ Зміни застосовано без перезапуску бота.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "edit_payment_text")
+@admin_only
+async def edit_payment_text_start(callback: CallbackQuery, state: FSMContext):
+    """Почати редагування тексту про оплату"""
+    await state.set_state(EditClubInfoStates.waiting_for_payment_info)
+    await callback.message.edit_text(
+        "💳 <b>Редагування тексту про оплату</b>\n\n"
+        "Надішліть новий текст інформації про оплату:",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(EditClubInfoStates.waiting_for_payment_info)
+@admin_only
+async def edit_payment_text_process(message: Message, state: FSMContext):
+    """Обробити новий текст про оплату"""
+    new_text = message.text.strip()
+    
+    import os
+    env_file = ".env"
+    if os.path.exists(env_file):
+        with open(env_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        updated_lines = []
+        found = False
+        for line in lines:
+            if line.startswith('PAYMENT_INFO='):
+                updated_lines.append(f'PAYMENT_INFO="{new_text}"\n')
+                found = True
+            else:
+                updated_lines.append(line)
+        
+        if not found:
+            updated_lines.append(f'PAYMENT_INFO="{new_text}"\n')
+        
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.writelines(updated_lines)
+    
+    from config import reload_config
+    reload_config()
+    
+    await state.clear()
+    await message.answer(
+        f"✅ Текст про оплату оновлено!\n\n"
+        "ℹ️ Зміни застосовано без перезапуску бота.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "edit_card_number")
+@admin_only
+async def edit_card_number_start(callback: CallbackQuery, state: FSMContext):
+    """Почати редагування номера картки"""
+    await state.set_state(EditClubInfoStates.waiting_for_card_number)
+    await callback.message.edit_text(
+        "💳 <b>Редагування номера картки</b>\n\n"
+        "Надішліть номер картки:",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(EditClubInfoStates.waiting_for_card_number)
+@admin_only
+async def edit_card_number_process(message: Message, state: FSMContext):
+    """Обробити новий номер картки"""
+    new_card = message.text.strip()
+    
+    import os
+    env_file = ".env"
+    if os.path.exists(env_file):
+        with open(env_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        updated_lines = []
+        found = False
+        for line in lines:
+            if line.startswith('PAYMENT_CARD_NUMBER='):
+                updated_lines.append(f'PAYMENT_CARD_NUMBER="{new_card}"\n')
+                found = True
+            else:
+                updated_lines.append(line)
+        
+        if not found:
+            updated_lines.append(f'PAYMENT_CARD_NUMBER="{new_card}"\n')
+        
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.writelines(updated_lines)
+    
+    from config import reload_config
+    reload_config()
+    
+    await state.clear()
+    await message.answer(
+        f"✅ Номер картки оновлено: <code>{new_card}</code>\n\n"
+        "ℹ️ Зміни застосовано без перезапуску бота.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "edit_bank_link")
+@admin_only
+async def edit_bank_link_start(callback: CallbackQuery, state: FSMContext):
+    """Почати редагування посилання на банку"""
+    await state.set_state(EditClubInfoStates.waiting_for_bank_link)
+    await callback.message.edit_text(
+        "🔗 <b>Редагування посилання на банку</b>\n\n"
+        "Надішліть посилання на банку:",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(EditClubInfoStates.waiting_for_bank_link)
+@admin_only
+async def edit_bank_link_process(message: Message, state: FSMContext):
+    """Обробити нове посилання на банку"""
+    new_link = message.text.strip()
+    
+    import os
+    env_file = ".env"
+    if os.path.exists(env_file):
+        with open(env_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        updated_lines = []
+        found = False
+        for line in lines:
+            if line.startswith('PAYMENT_BANK_LINK='):
+                updated_lines.append(f'PAYMENT_BANK_LINK="{new_link}"\n')
+                found = True
+            else:
+                updated_lines.append(line)
+        
+        if not found:
+            updated_lines.append(f'PAYMENT_BANK_LINK="{new_link}"\n')
+        
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.writelines(updated_lines)
+    
+    from config import reload_config
+    reload_config()
+    
+    await state.clear()
+    await message.answer(
+        f"✅ Посилання на банку оновлено: {new_link}\n\n"
         "ℹ️ Зміни застосовано без перезапуску бота.",
         parse_mode="HTML"
     )
