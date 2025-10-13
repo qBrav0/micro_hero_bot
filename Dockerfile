@@ -20,10 +20,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 # Створюємо директорію для бази даних та логів
-RUN mkdir -p /app/data /app/logs
-
-# Створюємо volume точки для збереження даних
-VOLUME ["/app/data", "/app/logs", "/app/static/images"]
+RUN mkdir -p /app/data /app/logs /app/static/images
 
 # Встановлюємо змінну середовища для Python
 ENV PYTHONUNBUFFERED=1
