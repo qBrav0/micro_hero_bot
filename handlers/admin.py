@@ -646,15 +646,160 @@ async def populate_test_games(message: Message):
     await message.answer("🎮 Запускаю заповнення тестовими іграми...")
     
     try:
-        # Імпортуємо та запускаємо скрипт
-        from populate_test_games import populate_games
-        import asyncio
+        # Список тестових ігор
+        TEST_GAMES = [
+            {
+                "name": "Катан",
+                "description": "Економічна стратегія про колонізацію острова. Будуйте поселення, торгуйте ресурсами та розвивайте свою цивілізацію.",
+                "min_players": 3,
+                "max_players": 4,
+                "avg_duration": 90
+            },
+            {
+                "name": "Каркассон",
+                "description": "Стратегічна гра про будівництво середньовічного французького міста за допомогою тайлів. Розміщуйте своїх міплів і набирайте очки.",
+                "min_players": 2,
+                "max_players": 5,
+                "avg_duration": 45
+            },
+            {
+                "name": "Пандемія",
+                "description": "Кооперативна гра, де команда лікарів бореться проти чотирьох смертельних хвороб. Працюйте разом, щоб врятувати людство!",
+                "min_players": 2,
+                "max_players": 4,
+                "avg_duration": 60
+            },
+            {
+                "name": "Азул",
+                "description": "Абстрактна гра про викладку плиток з красивими візерунками. Створюйте гармонійні композиції та набирайте очки.",
+                "min_players": 2,
+                "max_players": 4,
+                "avg_duration": 45
+            },
+            {
+                "name": "Вінгспан",
+                "description": "Стратегічна гра про спостереження за птахами. Будуйте заповідники, годуйте птахів та збирайте колекції.",
+                "min_players": 1,
+                "max_players": 5,
+                "avg_duration": 75
+            },
+            {
+                "name": "Скривлені кубики",
+                "description": "Креативна гра про будівництво веж з кубиків. Використовуйте фізику та логіку для створення стабільних конструкцій.",
+                "min_players": 1,
+                "max_players": 8,
+                "avg_duration": 30
+            },
+            {
+                "name": "Тікет до їзди",
+                "description": "Стратегічна гра про будівництво залізниць по Європі. Плануйте маршрути та з'єднуйте міста.",
+                "min_players": 2,
+                "max_players": 5,
+                "avg_duration": 60
+            },
+            {
+                "name": "Сетлс оф Катан",
+                "description": "Класична стратегічна гра про колонізацію острова. Торгуйте ресурсами та будьте першим до перемоги.",
+                "min_players": 3,
+                "max_players": 4,
+                "avg_duration": 90
+            },
+            {
+                "name": "Каркуссон",
+                "description": "Стратегічна гра про будівництво середньовічного міста. Розміщуйте тайли та своїх міплів для набору очок.",
+                "min_players": 2,
+                "max_players": 5,
+                "avg_duration": 45
+            },
+            {
+                "name": "Домініон",
+                "description": "Карткова гра про будівництво королівства. Купуйте картки та створюйте потужні комбінації.",
+                "min_players": 2,
+                "max_players": 4,
+                "avg_duration": 30
+            },
+            {
+                "name": "7 Чудес",
+                "description": "Стратегічна гра про будівництво античних чудес світу. Розвивайте цивілізацію та змагайтеся з сусідами.",
+                "min_players": 2,
+                "max_players": 7,
+                "avg_duration": 30
+            },
+            {
+                "name": "Сплінтер",
+                "description": "Кооперативна гра про виживання в підземеллі. Досліджуйте, збирайте ресурси та уникайте небезпек.",
+                "min_players": 1,
+                "max_players": 4,
+                "avg_duration": 90
+            },
+            {
+                "name": "Глоріа Мундіс",
+                "description": "Стратегічна гра про будівництво середньовічного монастиря. Керуйте ресурсами та розвивайте духовність.",
+                "min_players": 1,
+                "max_players": 4,
+                "avg_duration": 75
+            },
+            {
+                "name": "Терраформінг Марс",
+                "description": "Стратегічна гра про колонізацію Марса. Підвищуйте температуру, додавайте кисень та створюйте океани.",
+                "min_players": 1,
+                "max_players": 5,
+                "avg_duration": 120
+            },
+            {
+                "name": "Еверделл",
+                "description": "Стратегічна гра про будівництво міста тварин. Збирайте ресурси, будьте споруди та розвивайте свою цивілізацію.",
+                "min_players": 1,
+                "max_players": 4,
+                "avg_duration": 80
+            },
+            {
+                "name": "Розумні Сіті",
+                "description": "Стратегічна гра про будівництво сучасного міста. Плануйте квартали, розвивайте інфраструктуру та залучайте жителів.",
+                "min_players": 1,
+                "max_players": 4,
+                "avg_duration": 75
+            },
+            {
+                "name": "Король Нью-Йорка",
+                "description": "Стратегічна гра про боротьбу монстрів за контроль над Нью-Йорком. Знищуйте будівлі та станьте королем міста.",
+                "min_players": 2,
+                "max_players": 6,
+                "avg_duration": 115
+            }
+        ]
         
-        await populate_games()
-        await message.answer("✅ Тестові ігри успішно додано!")
+        # Перевіряємо чи вже є ігри
+        async for session in get_session():
+            existing_games = await GameService.get_all_active_games(session)
+            if existing_games:
+                await message.answer(f"⚠️ В базі вже є {len(existing_games)} ігор. Пропускаємо заповнення.")
+                return
+            
+            # Додаємо ігри
+            added_count = 0
+            for game_data in TEST_GAMES:
+                try:
+                    game = await GameService.create_new_game(
+                        session=session,
+                        name=game_data["name"],
+                        description=game_data["description"],
+                        min_players=game_data["min_players"],
+                        max_players=game_data["max_players"],
+                        avg_duration=game_data["avg_duration"],
+                        image_path=None
+                    )
+                    added_count += 1
+                except Exception as e:
+                    await message.answer(f"❌ Помилка при додаванні {game_data['name']}: {e}")
+            
+            await message.answer(f"✅ Успішно додано {added_count} з {len(TEST_GAMES)} тестових ігор!")
+            break
         
     except Exception as e:
         await message.answer(f"❌ Помилка при заповненні: {e}")
+        import traceback
+        await message.answer(f"Деталі: {traceback.format_exc()}")
 
 
 # ===== КОРИСТУВАЧІ =====
