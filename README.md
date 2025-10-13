@@ -230,21 +230,74 @@ micro_hero/
 - `CreateSchedule` - створення розкладу
 - `EditSchedule` - редагування розкладу
 
-## Встановлення та запуск
+## 🚀 Встановлення та запуск
 
-1. Клонувати репозиторій
-2. Встановити залежності: `pip install -r requirements.txt`
-3. Налаштувати конфігурацію в `config.py`
-4. Запустити бота: `python main.py`
+### Варіант 1: Локально (для розробки)
+
+#### Використовуючи uv (рекомендовано)
+
+```bash
+# Встановіть uv
+pip install uv
+
+# Створіть віртуальне середовище
+uv venv
+
+# Активуйте середовище
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# Git Bash/Linux:
+source .venv/Scripts/activate
+
+# Встановіть залежності
+uv pip install -e .
+
+# Створіть .env файл
+cp env.example .env
+# Відредагуйте .env - додайте BOT_TOKEN та ADMIN_IDS
+
+# Запустіть бота
+python main.py
+```
+
+#### Використовуючи Docker
+
+```bash
+# Створіть .env файл
+cp env.example .env
+# Відредагуйте .env
+
+# Запустіть через Docker Compose
+docker-compose up --build
+```
+
+### Варіант 2: Деплой на Render.com ☁️ (безкоштовно)
+
+**Найпростіший спосіб для продакшена!**
+
+1. Завантажте код на GitHub
+2. Зареєструйтесь на [Render.com](https://render.com)
+3. Створіть Background Worker з вашого репозиторію
+4. Додайте змінні середовища
+5. Готово! 🎉
+
+**📖 Повний гайд**: [RENDER_DEPLOY.md](RENDER_DEPLOY.md)
 
 ## Конфігурація
 
-```python
-# config.py
-BOT_TOKEN = "your_bot_token"
-ADMIN_IDS = [123456789, 987654321]  # ID адміністраторів
-DATABASE_URL = "sqlite:///./gameclub.db"
+Створіть файл `.env` в корені проєкту:
+
+```env
+BOT_TOKEN=ваш_токен_від_@BotFather
+ADMIN_IDS=ваш_telegram_id
+DATABASE_URL=sqlite+aiosqlite:///./gameclub.db
+CLUB_NAME=Герої на полицях
+CLUB_DESCRIPTION=Ігротека настільних ігор
 ```
+
+**Як отримати:**
+- `BOT_TOKEN`: [@BotFather](https://t.me/BotFather) → /newbot
+- `ADMIN_IDS`: [@userinfobot](https://t.me/userinfobot)
 
 ## Особливості реалізації
 

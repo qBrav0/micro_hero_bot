@@ -1,0 +1,22 @@
+services:
+  bot:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: micro_hero_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/gameclub.db
+    volumes:
+      # Зберігаємо базу даних, логи та зображення
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./static/images:/app/static/images
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
