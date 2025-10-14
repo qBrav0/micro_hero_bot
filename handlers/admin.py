@@ -743,7 +743,7 @@ async def view_admin_schedule(message: Message):
         
         for game_session in sessions:
             game = await get_game(db_session, game_session.game_id)
-            if not game:
+            if not game or not game.is_active:
                 continue
             
             registrations = await get_registrations(db_session, game_session.id, active_only=True)
@@ -835,7 +835,7 @@ async def admin_back_schedule(callback: CallbackQuery):
         
         for game_session in sessions:
             game = await get_game(db_session, game_session.game_id)
-            if not game:
+            if not game or not game.is_active:
                 continue
             
             registrations = await get_registrations(db_session, game_session.id, active_only=True)

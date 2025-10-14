@@ -83,11 +83,14 @@ async def show_date_sessions(callback: CallbackQuery):
         
         # Створюємо клавіатуру з іграми
         keyboard = []
+        active_sessions_found = False
+        
         for game_session in sessions:
             game = await get_game(session, game_session.game_id)
-            if not game:
+            if not game or not game.is_active:
                 continue
             
+            active_sessions_found = True
             registrations = await get_registrations(session, game_session.id, active_only=True)
             players_count = len(registrations)
             
@@ -106,6 +109,11 @@ async def show_date_sessions(callback: CallbackQuery):
                 "text": game_info,
                 "callback_data": f"view_session_{game_session.id}_date_{date_str}"
             }])
+        
+        # Якщо не знайшли активних сесій, показуємо відповідне повідомлення
+        if not active_sessions_found:
+            await callback.answer("На цю дату немає активних ігор", show_alert=True)
+            return
         
         keyboard.append([{"text": "🔙 Назад до дат", "callback_data": "back_to_schedule"}])
         

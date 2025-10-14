@@ -100,7 +100,17 @@ class ScheduleService:
         if not sessions:
             return "📅 На найближчі дні немає запланованих ігор.\n\nСлідкуйте за оновленнями!"
         
-        grouped = await ScheduleService.group_sessions_by_date(sessions)
+        # Фільтруємо сесії тільки з активних ігор
+        active_sessions = []
+        for game_session in sessions:
+            game = await get_game(db_session, game_session.game_id)
+            if game and game.is_active:
+                active_sessions.append(game_session)
+        
+        if not active_sessions:
+            return "📅 На найближчі дні немає запланованих ігор.\n\nСлідкуйте за оновленнями!"
+        
+        grouped = await ScheduleService.group_sessions_by_date(active_sessions)
         
         text = "📅 <b>Розклад ігор:</b>\n\n"
         

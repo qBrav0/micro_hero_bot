@@ -210,8 +210,8 @@ async def create_game_session(session: AsyncSession, game_id: int, date: date,
 
 async def get_game_sessions(session: AsyncSession, from_date: Optional[date] = None,
                            to_date: Optional[date] = None) -> List[GameSession]:
-    """Отримати сесії ігор за період"""
-    query = select(GameSession)
+    """Отримати сесії ігор за період (тільки з активних ігор)"""
+    query = select(GameSession).join(Game).where(Game.is_active == True)
     
     if from_date:
         query = query.where(GameSession.date >= from_date)
@@ -224,11 +224,20 @@ async def get_game_sessions(session: AsyncSession, from_date: Optional[date] = N
 
 
 async def get_upcoming_sessions(session: AsyncSession, days: int = 7) -> List[GameSession]:
-    """Отримати майбутні сесії на найближчі N днів"""
+    """Отримати майбутні сесії на найближчі N днів (тільки з активних ігор)"""
     from datetime import date, timedelta
     today = date.today()
     end_date = today + timedelta(days=days)
-    return await get_game_sessions(session, from_date=today, to_date=end_date)
+    
+    # Отримуємо сесії з джойном до таблиці Game, щоб фільтрувати тільки активні ігри
+    query = select(GameSession).join(Game).where(
+        GameSession.date >= today,
+        GameSession.date <= end_date,
+        Game.is_active == True
+    ).order_by(GameSession.date, GameSession.start_time)
+    
+    result = await session.execute(query)
+    return list(result.scalars().all())
 
 
 async def delete_game_session(session: AsyncSession, session_id: int) -> bool:
