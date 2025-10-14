@@ -635,13 +635,33 @@ async def process_payment_type(callback: CallbackQuery, state: FSMContext):
     user_telegram_id = callback.from_user.id
     
     async for session in get_session():
-        from database import get_user_by_telegram_id
+        from database import get_user_by_telegram_id, create_day_pricing, get_day_pricing, update_day_pricing
         user = await get_user_by_telegram_id(session, user_telegram_id)
         
         if not user:
             await callback.answer("❌ Помилка: користувача не знайдено", show_alert=True)
             await state.clear()
             return
+        
+        # Створюємо або оновлюємо ціноутворення для дня, якщо є дані про ціни
+        if "adult_price" in data and "child_price" in data:
+            existing_pricing = await get_day_pricing(session, data["date"])
+            if existing_pricing:
+                # Оновлюємо існуючий запис новими цінами
+                await update_day_pricing(
+                    session=session,
+                    pricing_id=existing_pricing.id,
+                    adult_price=data["adult_price"],
+                    child_price=data["child_price"]
+                )
+            else:
+                # Створюємо новий запис тільки якщо його ще немає
+                await create_day_pricing(
+                    session=session,
+                    date=data["date"],
+                    adult_price=data["adult_price"],
+                    child_price=data["child_price"]
+                )
         
         # Створюємо сесію з обраним типом оплати
         game_session = await ScheduleService.create_session(
@@ -683,87 +703,26 @@ async def process_game_selection(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     await state.update_data(game_id=game_id)
     
-    # Перевіряємо чи це перша сесія на цей день
-    pricing_exists = data.get("pricing_exists", False)
+    # Завжди запитуємо тип оплати
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Входить в оплату за вхід", callback_data="payment_included")],
+        [InlineKeyboardButton(text="🎁 Безкоштовна", callback_data="payment_free")],
+        [InlineKeyboardButton(text="💝 Free donate", callback_data="payment_donate")]
+    ])
     
-    if pricing_exists:
-        # Не перша сесія - запитуємо тип оплати
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Входить в оплату за вхід", callback_data="payment_included")],
-            [InlineKeyboardButton(text="🎁 Безкоштовна", callback_data="payment_free")],
-            [InlineKeyboardButton(text="💝 Free donate", callback_data="payment_donate")]
-        ])
+    async for session in get_session():
+        game = await get_game(session, game_id)
         
-        async for session in get_session():
-            game = await get_game(session, game_id)
-            
-            await callback.message.edit_text(
-                f"🎮 Гра: <b>{game.name}</b>\n"
-                f"📅 Дата: {data['date'].strftime('%d.%m.%Y')}\n"
-                f"⏰ Час: {data['start_time']} - {data['end_time']}\n\n"
-                f"💳 Оберіть тип оплати для цієї сесії:",
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
-        
-        await callback.answer()
-    else:
-        # Перша сесія - створюємо відразу з типом "included"
-        user_telegram_id = callback.from_user.id
-        
-        async for session in get_session():
-            from database import get_user_by_telegram_id, create_day_pricing, get_day_pricing
-            user = await get_user_by_telegram_id(session, user_telegram_id)
-            
-            if not user:
-                await callback.answer("❌ Помилка: користувача не знайдено", show_alert=True)
-                await state.clear()
-                return
-            
-            # Створюємо або оновлюємо ціноутворення для дня
-            if "adult_price" in data and "child_price" in data:
-                from database import update_day_pricing
-                existing_pricing = await get_day_pricing(session, data["date"])
-                if existing_pricing:
-                    # Оновлюємо існуючий запис новими цінами
-                    await update_day_pricing(
-                        session=session,
-                        pricing_id=existing_pricing.id,
-                        adult_price=data["adult_price"],
-                        child_price=data["child_price"]
-                    )
-                else:
-                    # Створюємо новий запис тільки якщо його ще немає
-                    await create_day_pricing(
-                        session=session,
-                        date=data["date"],
-                        adult_price=data["adult_price"],
-                        child_price=data["child_price"]
-                    )
-            
-            # Створюємо сесію з типом оплати "included"
-            game_session = await ScheduleService.create_session(
-                session=session,
-                game_id=game_id,
-                date=data["date"],
-                start_time=data["start_time"],
-                end_time=data["end_time"],
-                payment_type="included",
-                created_by=user.id
-            )
-            
-            game = await get_game(session, game_id)
-            
-            await callback.message.edit_text(
-                f"✅ Гру <b>{game.name}</b> успішно додано в розклад!\n\n"
-                f"📅 Дата: {data['date'].strftime('%d.%m.%Y')}\n"
-                f"⏰ Час: {data['start_time']} - {data['end_time']}\n"
-                f"💳 Оплата: ✅ Входить в оплату за вхід",
-                parse_mode="HTML"
-            )
-        
-        await state.clear()
-        await callback.answer()
+        await callback.message.edit_text(
+            f"🎮 Гра: <b>{game.name}</b>\n"
+            f"📅 Дата: {data['date'].strftime('%d.%m.%Y')}\n"
+            f"⏰ Час: {data['start_time']} - {data['end_time']}\n\n"
+            f"💳 Оберіть тип оплати для цієї сесії:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    
+    await callback.answer()
 
 
 @router.message(F.text == "📋 Переглянути розклад")
