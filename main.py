@@ -15,7 +15,8 @@ from config import BOT_TOKEN, validate_config
 from handlers import start_router, user_router, admin_router, common_router
 
 # Імпортуємо базу даних
-from database import init_db
+from database import init_db, run_migrations
+from database.database import engine
 
 # Налаштування логування
 logging.basicConfig(
@@ -42,6 +43,9 @@ async def main():
     
     # Ініціалізація бази даних
     try:
+        # Спочатку виконуємо міграції
+        await run_migrations(engine)
+        # Потім ініціалізуємо таблиці
         await init_db()
         logger.info("✅ База даних ініціалізована")
     except Exception as e:

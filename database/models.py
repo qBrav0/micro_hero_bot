@@ -1,12 +1,13 @@
 from datetime import datetime, date, time
 from typing import Optional
-from sqlmodel import SQLModel, Field
+from sqlmodel import SQLModel, Field, Column
+from sqlalchemy import BigInteger
 
 
 class User(SQLModel, table=True):
     """Модель користувача"""
     id: Optional[int] = Field(default=None, primary_key=True)
-    telegram_id: int = Field(unique=True, index=True)
+    telegram_id: int = Field(unique=True, index=True, sa_column=Column(BigInteger, unique=True, index=True))
     username: Optional[str] = None
     first_name: str
     last_name: Optional[str] = None

@@ -1,5 +1,6 @@
 from .models import User, Game, GameSession, Registration, DayPricing, ClubSettings
 from .database import init_db, get_session
+from .migrations import run_migrations
 from .crud import (
     create_user, get_user_by_telegram_id, update_user,
     create_game, get_game, get_all_games, update_game, delete_game,
@@ -12,7 +13,7 @@ from .crud import (
 
 __all__ = [
     "User", "Game", "GameSession", "Registration", "DayPricing", "ClubSettings",
-    "init_db", "get_session",
+    "init_db", "get_session", "run_migrations",
     "create_user", "get_user_by_telegram_id", "update_user",
     "create_game", "get_game", "get_all_games", "update_game", "delete_game",
     "create_game_session", "get_game_sessions", "get_upcoming_sessions", "delete_game_session",
