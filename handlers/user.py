@@ -119,7 +119,7 @@ async def show_date_sessions(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("view_session_"))
-async def view_session_details(callback: CallbackQuery):
+async def view_session_details(callback: CallbackQuery, skip_answer: bool = False):
     """Переглянути детальну інформацію про сесію"""
     session_id = int(callback.data.split("_")[-1])
     user_id = callback.from_user.id
@@ -241,7 +241,8 @@ async def view_session_details(callback: CallbackQuery):
             except:
                 pass
         
-        await callback.answer()
+        if not skip_answer:
+            await callback.answer()
 
 
 @router.callback_query(F.data.startswith("register_"))
@@ -291,9 +292,12 @@ async def register_for_game(callback: CallbackQuery):
                 from_user=callback.from_user,
                 message=callback.message,
                 chat_instance=callback.chat_instance,
-                data=f"view_session_{session_id}"
+                data=f"view_session_{session_id}",
+                inline_message_id=None
             )
-            await view_session_details(new_callback)
+            # Прив'язуємо bot до callback
+            new_callback._bot = callback.bot
+            await view_session_details(new_callback, skip_answer=True)
         else:
             await callback.answer(message, show_alert=True)
 
@@ -343,9 +347,12 @@ async def unregister_from_game(callback: CallbackQuery):
                 from_user=callback.from_user,
                 message=callback.message,
                 chat_instance=callback.chat_instance,
-                data=f"view_session_{session_id}"
+                data=f"view_session_{session_id}",
+                inline_message_id=None
             )
-            await view_session_details(new_callback)
+            # Прив'язуємо bot до callback
+            new_callback._bot = callback.bot
+            await view_session_details(new_callback, skip_answer=True)
         else:
             await callback.answer(message, show_alert=True)
 
