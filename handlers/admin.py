@@ -420,29 +420,48 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
     
     await state.update_data(date=selected_date)
     
-    # Перевіряємо чи вже є ціна для цього дня
+    # Перевіряємо чи є реально активні сесії на цей день
     from database import get_session, get_day_pricing
+    from sqlmodel import select
+    from database.models import GameSession
+    
     async for db_session in get_session():
-        pricing = await get_day_pricing(db_session, selected_date)
+        # Перевіряємо чи є сесії на цю дату
+        result = await db_session.execute(
+            select(GameSession).where(GameSession.date == selected_date)
+        )
+        existing_sessions = result.scalars().all()
         
-        if pricing:
-            # Ціна вже встановлена
-            await state.update_data(
-                adult_price=pricing.adult_price,
-                child_price=pricing.child_price,
-                pricing_exists=True
-            )
-            await state.set_state(CreateScheduleStates.waiting_for_start_time)
-            await callback.message.edit_text(
-                f"📅 Дата: <b>{selected_date.strftime('%d.%m.%Y')}</b>\n\n"
-                f"💰 Ціни на цей день вже встановлені:\n"
-                f"• Дорослі: {pricing.adult_price} грн\n"
-                f"• Діти до 18: {pricing.child_price} грн\n\n"
-                f"⏰ Введіть час початку (ЧЧ:ХХ):",
-                parse_mode="HTML"
-            )
+        if existing_sessions:
+            # Є сесії на цей день - використовуємо існуючу ціну
+            pricing = await get_day_pricing(db_session, selected_date)
+            
+            if pricing:
+                await state.update_data(
+                    adult_price=pricing.adult_price,
+                    child_price=pricing.child_price,
+                    pricing_exists=True
+                )
+                await state.set_state(CreateScheduleStates.waiting_for_start_time)
+                await callback.message.edit_text(
+                    f"📅 Дата: <b>{selected_date.strftime('%d.%m.%Y')}</b>\n\n"
+                    f"💰 Ціни на цей день вже встановлені:\n"
+                    f"• Дорослі: {pricing.adult_price} грн\n"
+                    f"• Діти до 18: {pricing.child_price} грн\n\n"
+                    f"⏰ Введіть час початку (ЧЧ:ХХ):",
+                    parse_mode="HTML"
+                )
+            else:
+                # Є сесії але немає ціни (не повинно статися, але на всяк)
+                await state.update_data(pricing_exists=False)
+                await state.set_state(CreateScheduleStates.waiting_for_adult_price)
+                await callback.message.edit_text(
+                    f"📅 Дата: <b>{selected_date.strftime('%d.%m.%Y')}</b>\n\n"
+                    f"💰 Введіть ціну входу для дорослих (в грн):",
+                    parse_mode="HTML"
+                )
         else:
-            # Перша сесія на цей день - встановлюємо ціни
+            # Немає сесій на цей день - це перша сесія, запитуємо ціну
             await state.update_data(pricing_exists=False)
             await state.set_state(CreateScheduleStates.waiting_for_adult_price)
             await callback.message.edit_text(
@@ -466,27 +485,44 @@ async def process_custom_date(message: Message, state: FSMContext):
     
     await state.update_data(date=parsed_date)
     
-    # Перевіряємо чи вже є ціна для цього дня
+    # Перевіряємо чи є реально активні сесії на цей день
     from database import get_session, get_day_pricing
+    from sqlmodel import select
+    from database.models import GameSession
+    
     async for db_session in get_session():
-        pricing = await get_day_pricing(db_session, parsed_date)
+        # Перевіряємо чи є сесії на цю дату
+        result = await db_session.execute(
+            select(GameSession).where(GameSession.date == parsed_date)
+        )
+        existing_sessions = result.scalars().all()
         
-        if pricing:
-            # Ціна вже встановлена
-            await state.update_data(
-                adult_price=pricing.adult_price,
-                child_price=pricing.child_price,
-                pricing_exists=True
-            )
-            await state.set_state(CreateScheduleStates.waiting_for_start_time)
-            await message.answer(
-                f"💰 Ціни на {parsed_date.strftime('%d.%m.%Y')} вже встановлені:\n"
-                f"• Дорослі: {pricing.adult_price} грн\n"
-                f"• Діти до 18: {pricing.child_price} грн\n\n"
-                f"⏰ Введіть час початку (ЧЧ:ХХ):"
-            )
+        if existing_sessions:
+            # Є сесії на цей день - використовуємо існуючу ціну
+            pricing = await get_day_pricing(db_session, parsed_date)
+            
+            if pricing:
+                await state.update_data(
+                    adult_price=pricing.adult_price,
+                    child_price=pricing.child_price,
+                    pricing_exists=True
+                )
+                await state.set_state(CreateScheduleStates.waiting_for_start_time)
+                await message.answer(
+                    f"💰 Ціни на {parsed_date.strftime('%d.%m.%Y')} вже встановлені:\n"
+                    f"• Дорослі: {pricing.adult_price} грн\n"
+                    f"• Діти до 18: {pricing.child_price} грн\n\n"
+                    f"⏰ Введіть час початку (ЧЧ:ХХ):"
+                )
+            else:
+                # Є сесії але немає ціни (не повинно статися, але на всяк)
+                await state.update_data(pricing_exists=False)
+                await state.set_state(CreateScheduleStates.waiting_for_adult_price)
+                await message.answer(
+                    f"💰 Введіть ціну входу для дорослих (в грн):"
+                )
         else:
-            # Перша сесія на цей день - встановлюємо ціни
+            # Немає сесій на цей день - це перша сесія, запитуємо ціну
             await state.update_data(pricing_exists=False)
             await state.set_state(CreateScheduleStates.waiting_for_adult_price)
             await message.answer(
