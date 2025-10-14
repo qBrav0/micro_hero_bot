@@ -121,14 +121,20 @@ class RegistrationService:
         
         text = "🎮 <b>Ваші записи:</b>\n\n"
         
+        active_registrations_found = False
         for i, (reg, game_session) in enumerate(future_registrations, 1):
             # Отримуємо гру
             game = await get_game(db_session, game_session.game_id)
-            if not game:
+            if not game or not game.is_active:
                 continue
             
+            active_registrations_found = True
             text += f"{i}. 🎮 <b>{game.name}</b>\n"
             text += f"   📅 {format_date(game_session.date)}\n"
             text += f"   ⏰ {format_time(game_session.start_time)} - {format_time(game_session.end_time)}\n\n"
+        
+        # Якщо не знайшли активних реєстрацій, показуємо відповідне повідомлення
+        if not active_registrations_found:
+            return "📋 У вас немає активних записів.\n\nОберіть гру з розкладу, щоб записатися!"
         
         return text

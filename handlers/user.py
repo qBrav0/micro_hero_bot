@@ -168,8 +168,8 @@ async def view_session_details(callback: CallbackQuery, skip_answer: bool = Fals
         
         # Отримуємо гру
         game = await get_game(db_session, game_session.game_id)
-        if not game:
-            await callback.answer("Гру не знайдено", show_alert=True)
+        if not game or not game.is_active:
+            await callback.answer("Гру не знайдено або вона була скасована", show_alert=True)
             return
         
         # Отримуємо реєстрації
@@ -483,7 +483,10 @@ async def show_my_registrations(message: Message):
             game_session = result.scalar_one_or_none()
             
             if game_session and game_session.date >= today:
-                future_registrations.append(reg)
+                # Перевіряємо, чи гра активна
+                game = await get_game(db_session, game_session.game_id)
+                if game and game.is_active:
+                    future_registrations.append(reg)
         
         if future_registrations:
             # Створюємо клавіатуру тільки для майбутніх сесій з контекстом
@@ -544,8 +547,8 @@ async def show_players_list(callback: CallbackQuery):
         
         # Отримуємо гру
         game = await get_game(db_session, game_session.game_id)
-        if not game:
-            await callback.answer("Гру не знайдено", show_alert=True)
+        if not game or not game.is_active:
+            await callback.answer("Гру не знайдено або вона була скасована", show_alert=True)
             return
         
         # Отримуємо реєстрації
