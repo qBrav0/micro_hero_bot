@@ -712,7 +712,7 @@ async def process_game_selection(callback: CallbackQuery, state: FSMContext):
         user_telegram_id = callback.from_user.id
         
         async for session in get_session():
-            from database import get_user_by_telegram_id, create_day_pricing
+            from database import get_user_by_telegram_id, create_day_pricing, get_day_pricing
             user = await get_user_by_telegram_id(session, user_telegram_id)
             
             if not user:
@@ -720,14 +720,26 @@ async def process_game_selection(callback: CallbackQuery, state: FSMContext):
                 await state.clear()
                 return
             
-            # Створюємо ціноутворення для дня
+            # Створюємо або оновлюємо ціноутворення для дня
             if "adult_price" in data and "child_price" in data:
-                await create_day_pricing(
-                    session=session,
-                    date=data["date"],
-                    adult_price=data["adult_price"],
-                    child_price=data["child_price"]
-                )
+                from database import update_day_pricing
+                existing_pricing = await get_day_pricing(session, data["date"])
+                if existing_pricing:
+                    # Оновлюємо існуючий запис новими цінами
+                    await update_day_pricing(
+                        session=session,
+                        pricing_id=existing_pricing.id,
+                        adult_price=data["adult_price"],
+                        child_price=data["child_price"]
+                    )
+                else:
+                    # Створюємо новий запис тільки якщо його ще немає
+                    await create_day_pricing(
+                        session=session,
+                        date=data["date"],
+                        adult_price=data["adult_price"],
+                        child_price=data["child_price"]
+                    )
             
             # Створюємо сесію з типом оплати "included"
             game_session = await ScheduleService.create_session(
