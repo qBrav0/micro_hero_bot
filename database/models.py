@@ -12,7 +12,17 @@ class User(SQLModel, table=True):
     first_name: str
     last_name: Optional[str] = None
     is_admin: bool = Field(default=False)
+    reminder_enabled: bool = Field(default=False)  # Чи увімкнені нагадування
+    reminder_hours_before: Optional[int] = None  # За скільки годин нагадувати
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ReminderSent(SQLModel, table=True):
+    """Модель для відстеження відправлених нагадувань"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    session_date: date  # Дата сесії для якої відправлено нагадування
+    sent_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class Game(SQLModel, table=True):

@@ -12,11 +12,14 @@ from aiogram.client.default import DefaultBotProperties
 from config import BOT_TOKEN, validate_config
 
 # Імпортуємо роутери
-from handlers import start_router, user_router, admin_router, common_router
+from handlers import start_router, user_router, admin_router, common_router, reminder_router
 
 # Імпортуємо базу даних
-from database import init_db, run_migrations
+from database import init_db, run_migrations, get_session
 from database.database import engine
+
+# Імпортуємо сервіси
+from services import ReminderService
 
 # Налаштування логування
 logging.basicConfig(
@@ -28,6 +31,31 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+async def reminder_background_task(bot: Bot):
+    """Фонова задача для періодичної перевірки та відправки нагадувань"""
+    logger.info("🔔 Фонова задача нагадувань запущена")
+    
+    while True:
+        try:
+            logger.debug("Перевірка нагадувань...")
+            
+            # Отримуємо сесію БД і відправляємо нагадування
+            async for session in get_session():
+                await ReminderService.send_reminders(bot, session)
+            
+            # Перевіряємо кожні 5 хвилин
+            await asyncio.sleep(300)  # 5 хвилин = 300 секунд
+                
+        except asyncio.CancelledError:
+            logger.info("🔔 Фонова задача нагадувань зупинена")
+            break
+        except Exception as e:
+            logger.error(f"Помилка в фоновій задачі нагадувань: {e}")
+            # Продовжуємо роботу навіть при помилці
+            await asyncio.sleep(300)  # Чекаємо 5 хвилин перед наступною спробою
+            continue
 
 
 async def main():
@@ -62,10 +90,14 @@ async def main():
     # Реєстрація роутерів
     dp.include_router(start_router)
     dp.include_router(common_router)
+    dp.include_router(reminder_router)
     dp.include_router(user_router)
     dp.include_router(admin_router)
     
     logger.info("🤖 Бот запущено")
+    
+    # Створюємо фонову задачу для нагадувань
+    reminder_task = asyncio.create_task(reminder_background_task(bot))
     
     try:
         # Видаляємо старі оновлення та запускаємо polling
@@ -74,6 +106,13 @@ async def main():
     except Exception as e:
         logger.error(f"❌ Помилка при роботі бота: {e}")
     finally:
+        # Зупиняємо фонову задачу
+        reminder_task.cancel()
+        try:
+            await reminder_task
+        except asyncio.CancelledError:
+            pass
+        
         await bot.session.close()
         logger.info("🛑 Бот зупинено")
 
