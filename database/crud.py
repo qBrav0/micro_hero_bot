@@ -161,6 +161,9 @@ async def delete_game_session(session: AsyncSession, session_id: int) -> bool:
         for registration in registrations:
             await session.delete(registration)
         
+        # Flush для застосування видалення реєстрацій перед видаленням сесії
+        await session.flush()
+        
         # Тепер видаляємо саму сесію
         await session.delete(game_session)
         await session.commit()
