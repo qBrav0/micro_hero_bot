@@ -866,22 +866,34 @@ async def show_statistics(message: Message):
         from sqlmodel import select, func
         from database.models import Registration, Game, GameSession
         
-        # Загальна кількість реєстрацій
+        # Кількість активних реєстрацій на майбутні сесії (тільки для активних ігор)
+        from datetime import date
         result = await session.execute(
-            select(func.count(Registration.id)).where(Registration.is_active == True)
+            select(func.count(Registration.id))
+            .join(GameSession)
+            .join(Game)
+            .where(
+                Registration.is_active,
+                GameSession.date >= date.today(),
+                Game.is_active
+            )
         )
         total_registrations = result.scalar()
         
         # Кількість ігор
         result = await session.execute(
-            select(func.count(Game.id)).where(Game.is_active == True)
+            select(func.count(Game.id)).where(Game.is_active)
         )
         total_games = result.scalar()
         
-        # Кількість майбутніх сесій
-        from datetime import date
+        # Кількість майбутніх сесій (тільки для активних ігор)
         result = await session.execute(
-            select(func.count(GameSession.id)).where(GameSession.date >= date.today())
+            select(func.count(GameSession.id))
+            .join(Game)
+            .where(
+                GameSession.date >= date.today(),
+                Game.is_active
+            )
         )
         upcoming_sessions = result.scalar()
         
