@@ -145,27 +145,21 @@ async def get_upcoming_sessions(session: AsyncSession, days: int = 7) -> List[Ga
 
 
 async def delete_game_session(session: AsyncSession, session_id: int) -> bool:
-    """Видалити сесію гри та деактивувати всі реєстрації на неї"""
+    """Видалити сесію гри та всі реєстрації на неї"""
     result = await session.execute(
         select(GameSession).where(GameSession.id == session_id)
     )
     game_session = result.scalar_one_or_none()
     
     if game_session:
-        # Спочатку деактивуємо всі активні реєстрації на цю сесію
+        # Спочатку видаляємо всі реєстрації на цю сесію (і активні, і неактивні)
         registrations_result = await session.execute(
-            select(Registration).where(
-                and_(
-                    Registration.session_id == session_id,
-                    Registration.is_active == True
-                )
-            )
+            select(Registration).where(Registration.session_id == session_id)
         )
         registrations = registrations_result.scalars().all()
         
         for registration in registrations:
-            registration.is_active = False
-            session.add(registration)
+            await session.delete(registration)
         
         # Тепер видаляємо саму сесію
         await session.delete(game_session)

@@ -2025,10 +2025,67 @@ async def confirm_delete_session(callback: CallbackQuery):
     session_id = int(callback.data.split("_")[-1])
     
     async for db_session in get_session():
+        from sqlmodel import select
+        from database.models import GameSession, User
+        
+        # Спочатку отримуємо інформацію про сесію та гравців для сповіщення
+        result = await db_session.execute(
+            select(GameSession).where(GameSession.id == session_id)
+        )
+        game_session = result.scalar_one_or_none()
+        
+        if not game_session:
+            await callback.answer("❌ Сесію не знайдено", show_alert=True)
+            return
+        
+        # Отримуємо гру
+        game = await get_game(db_session, game_session.game_id)
+        if not game:
+            await callback.answer("❌ Гру не знайдено", show_alert=True)
+            return
+        
+        # Отримуємо всіх зареєстрованих гравців
+        registrations = await get_registrations(db_session, session_id, active_only=True)
+        
+        # Зберігаємо інформацію про гравців для сповіщення
+        players_to_notify = []
+        for reg in registrations:
+            result = await db_session.execute(
+                select(User).where(User.id == reg.user_id)
+            )
+            player = result.scalar_one_or_none()
+            if player:
+                players_to_notify.append(player)
+        
+        # Видаляємо сесію (це також видалить всі реєстрації)
         success = await ScheduleService.delete_session(db_session, session_id)
         
         if success:
+            # Сповіщаємо всіх зареєстрованих гравців
+            if players_to_notify:
+                from aiogram import Bot
+                from config import BOT_TOKEN
+                bot = Bot(token=BOT_TOKEN)
+                
+                notification_text = f"❌ <b>Сесію гри скасовано</b>\n\n"
+                notification_text += f"🎮 Гра: <b>{game.name}</b>\n"
+                notification_text += f"📅 Дата: {format_date(game_session.date)}\n"
+                notification_text += f"⏰ Час: {format_time(game_session.start_time)} - {format_time(game_session.end_time)}\n\n"
+                notification_text += "Вибачте за незручності. Слідкуйте за оновленнями розкладу."
+                
+                for player in players_to_notify:
+                    try:
+                        await bot.send_message(
+                            chat_id=player.telegram_id,
+                            text=notification_text,
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        print(f"Помилка надсилання повідомлення гравцю {player.telegram_id}: {e}")
+            
             text = "✅ Сесію успішно видалено!"
+            if players_to_notify:
+                text += f"\n📨 Сповіщення надіслано {len(players_to_notify)} гравцям."
             
             # Перевіряємо чи є фото
             has_photo = callback.message.photo is not None and len(callback.message.photo) > 0
