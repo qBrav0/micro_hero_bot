@@ -1,15 +1,14 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from datetime import date, time
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import date
 
 from database import get_session
 from services import GameService, ScheduleService
 from keyboards import (
     get_admin_menu, get_admin_games_menu, get_admin_schedule_menu,
-    get_games_list_keyboard, get_date_selection_keyboard, get_confirmation_keyboard
+    get_games_list_keyboard, get_date_selection_keyboard
 )
 from utils.decorators import admin_only
 from utils.validators import validate_time, validate_date, validate_players_count, validate_duration, normalize_time
@@ -1943,7 +1942,8 @@ async def confirm_delete_game(callback: CallbackQuery):
         
         from keyboards import get_confirmation_keyboard
         text = f"⚠️ Ви впевнені що хочете видалити гру <b>{game.name}</b>?\n\n"
-        text += "Це також видалить всі сесії та реєстрації на цю гру."
+        text += "Це також видалить всі майбутні сесії цієї гри.\n"
+        text += "Користувачі, зареєстровані на ці сесії, отримають сповіщення про скасування."
         
         keyboard = get_confirmation_keyboard("delete_game", game_id)
         

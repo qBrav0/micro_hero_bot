@@ -32,9 +32,9 @@ class GameService:
         )
     
     @staticmethod
-    async def get_game_by_id(session: AsyncSession, game_id: int) -> Optional[Game]:
+    async def get_game_by_id(session: AsyncSession, game_id: int, active_only: bool = True) -> Optional[Game]:
         """Отримати гру за ID"""
-        return await get_game(session, game_id)
+        return await get_game(session, game_id, active_only=active_only)
     
     @staticmethod
     async def get_all_active_games(session: AsyncSession) -> List[Game]:

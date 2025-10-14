@@ -61,11 +61,13 @@ async def create_game(session: AsyncSession, name: str, description: str,
     return game
 
 
-async def get_game(session: AsyncSession, game_id: int) -> Optional[Game]:
+async def get_game(session: AsyncSession, game_id: int, active_only: bool = True) -> Optional[Game]:
     """Отримати гру за ID"""
-    result = await session.execute(
-        select(Game).where(Game.id == game_id)
-    )
+    query = select(Game).where(Game.id == game_id)
+    if active_only:
+        query = query.where(Game.is_active == True)
+    
+    result = await session.execute(query)
     return result.scalar_one_or_none()
 
 
@@ -87,13 +89,98 @@ async def update_game(session: AsyncSession, game: Game) -> Game:
 
 
 async def delete_game(session: AsyncSession, game_id: int) -> bool:
-    """Видалити гру (м'яке видалення)"""
-    game = await get_game(session, game_id)
+    """Видалити гру (м'яке видалення) та всі активні сесії"""
+    game = await get_game(session, game_id, active_only=False)  # Отримуємо навіть неактивні ігри
     if game:
+        # Спочатку видаляємо всі активні сесії цієї гри
+        from sqlmodel import select
+        from database.models import GameSession, User, Registration
+        from datetime import date
+        
+        # Знаходимо всі майбутні сесії цієї гри
+        result = await session.execute(
+            select(GameSession).where(
+                GameSession.game_id == game_id,
+                GameSession.date >= date.today()
+            )
+        )
+        future_sessions = result.scalars().all()
+        
+        # Збираємо інформацію про користувачів для сповіщення
+        users_to_notify = set()
+        sessions_info = []
+        
+        for game_session in future_sessions:
+            # Отримуємо всіх зареєстрованих користувачів на цю сесію
+            registrations_result = await session.execute(
+                select(Registration, User).join(User, Registration.user_id == User.id).where(
+                    Registration.session_id == game_session.id,
+                    Registration.is_active == True
+                )
+            )
+            
+            session_users = []
+            for registration, user in registrations_result:
+                users_to_notify.add((user.telegram_id, user.first_name, user.last_name))
+                session_users.append(user)
+            
+            if session_users:  # Тільки якщо є користувачі для сповіщення
+                sessions_info.append({
+                    'session': game_session,
+                    'users': session_users
+                })
+        
+        # Видаляємо кожну сесію (це також видалить реєстрації)
+        for game_session in future_sessions:
+            await delete_game_session(session, game_session.id)
+        
+        # Відправляємо сповіщення користувачам
+        if sessions_info:
+            await _notify_users_about_game_deletion(game, sessions_info)
+        
+        # Потім позначаємо гру як неактивну
         game.is_active = False
         await update_game(session, game)
         return True
     return False
+
+
+async def _notify_users_about_game_deletion(game, sessions_info):
+    """Відправити сповіщення користувачам про видалення гри"""
+    try:
+        from aiogram import Bot
+        from config import BOT_TOKEN
+        from utils.helpers import format_date, format_time
+        
+        bot = Bot(token=BOT_TOKEN)
+        
+        for session_data in sessions_info:
+            game_session = session_data['session']
+            users = session_data['users']
+            
+            # Формуємо текст сповіщення
+            notification_text = f"❌ <b>Сесію гри скасовано</b>\n\n"
+            notification_text += f"🎮 Гра: <b>{game.name}</b>\n"
+            notification_text += f"📅 Дата: {format_date(game_session.date)}\n"
+            notification_text += f"⏰ Час: {format_time(game_session.start_time)} - {format_time(game_session.end_time)}\n\n"
+            notification_text += "Гра була видалена з ігротеки. Вибачте за незручності.\n"
+            notification_text += "Слідкуйте за оновленнями розкладу для нових ігор!"
+            
+            # Відправляємо кожному користувачу
+            for user in users:
+                try:
+                    await bot.send_message(
+                        chat_id=user.telegram_id,
+                        text=notification_text,
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    print(f"Помилка надсилання повідомлення користувачу {user.telegram_id}: {e}")
+        
+        await bot.session.close()
+        
+    except Exception as e:
+        print(f"Помилка при відправці сповіщень про видалення гри: {e}")
 
 
 # ===== GAME SESSION CRUD =====
