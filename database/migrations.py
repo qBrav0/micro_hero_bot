@@ -29,13 +29,27 @@ async def run_migrations(engine: AsyncEngine):
 async def migrate_telegram_id_to_bigint(conn):
     """
     Змінює тип стовпця telegram_id з INTEGER на BIGINT
+    Тільки для PostgreSQL - SQLite не потребує цієї міграції
     """
     try:
+        # Визначаємо тип БД
+        db_name = conn.engine.dialect.name
+        
+        # SQLite не потребує цієї міграції (INTEGER вже підтримує великі числа)
+        if db_name == 'sqlite':
+            logger.info("ℹ️ SQLite: міграція telegram_id не потрібна")
+            return
+        
+        # Тільки для PostgreSQL
+        if db_name != 'postgresql':
+            logger.info(f"ℹ️ База даних {db_name}: міграція telegram_id не підтримується")
+            return
+        
         # Перевіряємо чи існує таблиця user
         result = await conn.execute(text(
             """
             SELECT EXISTS (
-                SELECT FROM information_schema.tables 
+                SELECT 1 FROM information_schema.tables 
                 WHERE table_name = 'user'
             );
             """

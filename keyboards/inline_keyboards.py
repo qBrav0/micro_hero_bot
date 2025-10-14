@@ -28,29 +28,52 @@ def get_schedule_keyboard(sessions_by_date: dict, current_date: Optional[date] =
 
 
 def get_game_actions_keyboard(session_id: int, is_registered: bool, 
-                              is_admin: bool = False) -> InlineKeyboardMarkup:
-    """Клавіатура дій з грою"""
+                              is_admin: bool = False, context: str = "schedule", 
+                              date_str: str = None) -> InlineKeyboardMarkup:
+    """Клавіатура дій з грою
+    
+    Args:
+        session_id: ID сесії
+        is_registered: Чи зареєстрований користувач
+        is_admin: Чи є користувач адміном
+        context: Контекст відкриття ('schedule', 'my_registrations', 'date')
+        date_str: Дата у форматі ISO (для повернення в меню дня)
+    """
     keyboard = []
+    
+    # Формуємо callback_data залежно від контексту
+    if context == "date" and date_str:
+        register_callback = f"register_{session_id}_date_{date_str}"
+        unregister_callback = f"unregister_{session_id}_date_{date_str}"
+        players_callback = f"players_list_{session_id}_date_{date_str}"
+    elif context == "my_registrations":
+        register_callback = f"register_{session_id}_my_registrations"
+        unregister_callback = f"unregister_{session_id}_my_registrations"
+        players_callback = f"players_list_{session_id}_my_registrations"
+    else:
+        register_callback = f"register_{session_id}"
+        unregister_callback = f"unregister_{session_id}"
+        players_callback = f"players_list_{session_id}"
     
     if is_registered:
         keyboard.append([
             InlineKeyboardButton(
                 text="❌ Скасувати запис",
-                callback_data=f"unregister_{session_id}"
+                callback_data=unregister_callback
             )
         ])
     else:
         keyboard.append([
             InlineKeyboardButton(
                 text="✅ Записатися",
-                callback_data=f"register_{session_id}"
+                callback_data=register_callback
             )
         ])
     
     keyboard.append([
         InlineKeyboardButton(
             text="👥 Список гравців",
-            callback_data=f"players_list_{session_id}"
+            callback_data=players_callback
         )
     ])
     
@@ -62,10 +85,21 @@ def get_game_actions_keyboard(session_id: int, is_registered: bool,
             )
         ])
     
+    # Кнопка "Назад" залежить від контексту
+    if context == "my_registrations":
+        back_text = "🔙 До моїх записів"
+        back_callback = "back_to_my_registrations"
+    elif context == "date" and date_str:
+        back_text = "🔙 До ігор дня"
+        back_callback = f"schedule_date_{date_str}"
+    else:
+        back_text = "🔙 До розкладу"
+        back_callback = "back_to_schedule"
+    
     keyboard.append([
         InlineKeyboardButton(
-            text="🔙 Назад",
-            callback_data="back_to_schedule"
+            text=back_text,
+            callback_data=back_callback
         )
     ])
     

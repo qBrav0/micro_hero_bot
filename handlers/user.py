@@ -101,9 +101,10 @@ async def show_date_sessions(callback: CallbackQuery):
             game_info = f"{payment_icon.get(game_session.payment_type, '✅')} {game.name} • {format_time(game_session.start_time)}"
             game_info += f" • {players_count}/{game.max_players}"
             
+            # Додаємо контекст дати в callback
             keyboard.append([{
                 "text": game_info,
-                "callback_data": f"view_session_{game_session.id}"
+                "callback_data": f"view_session_{game_session.id}_date_{date_str}"
             }])
         
         keyboard.append([{"text": "🔙 Назад до дат", "callback_data": "back_to_schedule"}])
@@ -121,7 +122,26 @@ async def show_date_sessions(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("view_session_"))
 async def view_session_details(callback: CallbackQuery, skip_answer: bool = False):
     """Переглянути детальну інформацію про сесію"""
-    session_id = int(callback.data.split("_")[-1])
+    # Парсимо callback_data для отримання контексту
+    # Формати:
+    # - view_session_{id}
+    # - view_session_{id}_date_{date_str}
+    # - view_session_{id}_my_registrations
+    
+    parts = callback.data.split("_")
+    session_id = int(parts[2])  # view_session_{id}...
+    
+    # Визначаємо контекст
+    context = "schedule"  # за замовчуванням
+    date_str = None
+    
+    if len(parts) > 3:
+        if parts[3] == "date" and len(parts) > 4:
+            context = "date"
+            date_str = parts[4]
+        elif parts[3] == "my" and len(parts) > 4 and parts[4] == "registrations":
+            context = "my_registrations"
+    
     user_id = callback.from_user.id
     
     async for db_session in get_session():
@@ -189,8 +209,15 @@ async def view_session_details(callback: CallbackQuery, skip_answer: bool = Fals
         if is_registered:
             text += "\n✅ <b>Ви зареєстровані на цю гру</b>"
         
-        # Клавіатура
-        keyboard = get_game_actions_keyboard(session_id, is_registered, is_admin=is_admin)
+        # Якщо дата не передана в контексті, беремо з сесії
+        if not date_str:
+            date_str = game_session.date.isoformat()
+        
+        # Клавіатура з контекстом
+        keyboard = get_game_actions_keyboard(
+            session_id, is_registered, is_admin=is_admin, 
+            context=context, date_str=date_str
+        )
         
         # Перевіряємо чи це повідомлення з фото
         has_photo = callback.message.photo is not None and len(callback.message.photo) > 0
@@ -248,7 +275,26 @@ async def view_session_details(callback: CallbackQuery, skip_answer: bool = Fals
 @router.callback_query(F.data.startswith("register_"))
 async def register_for_game(callback: CallbackQuery):
     """Зареєструватися на гру"""
-    session_id = int(callback.data.split("_")[-1])
+    # Парсимо callback_data
+    # Формати:
+    # - register_{id}
+    # - register_{id}_date_{date_str}
+    # - register_{id}_my_registrations
+    
+    parts = callback.data.split("_")
+    session_id = int(parts[1])
+    
+    # Визначаємо контекст
+    context = "schedule"  # за замовчуванням
+    date_str = None
+    
+    if len(parts) > 2:
+        if parts[2] == "date" and len(parts) > 3:
+            context = "date"
+            date_str = parts[3]
+        elif parts[2] == "my" and len(parts) > 3 and parts[3] == "registrations":
+            context = "my_registrations"
+    
     user_id = callback.from_user.id
     
     async for db_session in get_session():
@@ -284,15 +330,24 @@ async def register_for_game(callback: CallbackQuery):
             # Відправляємо повідомлення про успіх
             await callback.answer(message, show_alert=True)
             
-            # Показуємо оновлену інформацію про сесію
-            # Створюємо новий callback з правильним session_id
+            # Показуємо оновлену інформацію про сесію зі збереженням контексту
+            # Створюємо новий callback з правильним session_id і контекстом
             from aiogram.types import CallbackQuery as CQ
+            
+            # Формуємо callback_data з контекстом
+            if context == "date" and date_str:
+                callback_data = f"view_session_{session_id}_date_{date_str}"
+            elif context == "my_registrations":
+                callback_data = f"view_session_{session_id}_my_registrations"
+            else:
+                callback_data = f"view_session_{session_id}"
+            
             new_callback = CQ(
                 id=callback.id,
                 from_user=callback.from_user,
                 message=callback.message,
                 chat_instance=callback.chat_instance,
-                data=f"view_session_{session_id}",
+                data=callback_data,
                 inline_message_id=None
             )
             # Прив'язуємо bot до callback
@@ -305,7 +360,26 @@ async def register_for_game(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("unregister_"))
 async def unregister_from_game(callback: CallbackQuery):
     """Скасувати реєстрацію на гру"""
-    session_id = int(callback.data.split("_")[-1])
+    # Парсимо callback_data
+    # Формати:
+    # - unregister_{id}
+    # - unregister_{id}_date_{date_str}
+    # - unregister_{id}_my_registrations
+    
+    parts = callback.data.split("_")
+    session_id = int(parts[1])
+    
+    # Визначаємо контекст
+    context = "schedule"  # за замовчуванням
+    date_str = None
+    
+    if len(parts) > 2:
+        if parts[2] == "date" and len(parts) > 3:
+            context = "date"
+            date_str = parts[3]
+        elif parts[2] == "my" and len(parts) > 3 and parts[3] == "registrations":
+            context = "my_registrations"
+    
     user_id = callback.from_user.id
     
     async for db_session in get_session():
@@ -340,14 +414,23 @@ async def unregister_from_game(callback: CallbackQuery):
             
             await callback.answer(message, show_alert=True)
             
-            # Показуємо оновлену інформацію про сесію
+            # Показуємо оновлену інформацію про сесію зі збереженням контексту
             from aiogram.types import CallbackQuery as CQ
+            
+            # Формуємо callback_data з контекстом
+            if context == "date" and date_str:
+                callback_data = f"view_session_{session_id}_date_{date_str}"
+            elif context == "my_registrations":
+                callback_data = f"view_session_{session_id}_my_registrations"
+            else:
+                callback_data = f"view_session_{session_id}"
+            
             new_callback = CQ(
                 id=callback.id,
                 from_user=callback.from_user,
                 message=callback.message,
                 chat_instance=callback.chat_instance,
-                data=f"view_session_{session_id}",
+                data=callback_data,
                 inline_message_id=None
             )
             # Прив'язуємо bot до callback
@@ -395,12 +478,12 @@ async def show_my_registrations(message: Message):
                 future_registrations.append(reg)
         
         if future_registrations:
-            # Створюємо клавіатуру тільки для майбутніх сесій
+            # Створюємо клавіатуру тільки для майбутніх сесій з контекстом
             keyboard = []
             for reg in future_registrations:
                 keyboard.append([{
                     "text": f"Переглянути сесію #{reg.session_id}",
-                    "callback_data": f"view_session_{reg.session_id}"
+                    "callback_data": f"view_session_{reg.session_id}_my_registrations"
                 }])
             
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -417,7 +500,25 @@ async def show_my_registrations(message: Message):
 @router.callback_query(F.data.startswith("players_list_"))
 async def show_players_list(callback: CallbackQuery):
     """Показати список зареєстрованих гравців"""
-    session_id = int(callback.data.split("_")[-1])
+    # Парсимо callback_data
+    # Формати:
+    # - players_list_{id}
+    # - players_list_{id}_date_{date_str}
+    # - players_list_{id}_my_registrations
+    
+    parts = callback.data.split("_")
+    session_id = int(parts[2])  # players_list_{id}...
+    
+    # Визначаємо контекст
+    context = "schedule"  # за замовчуванням
+    date_str = None
+    
+    if len(parts) > 3:
+        if parts[3] == "date" and len(parts) > 4:
+            context = "date"
+            date_str = parts[4]
+        elif parts[3] == "my" and len(parts) > 4 and parts[4] == "registrations":
+            context = "my_registrations"
     
     async for db_session in get_session():
         # Отримуємо сесію
@@ -469,10 +570,19 @@ async def show_players_list(callback: CallbackQuery):
                     else:
                         text += f"{i}. {player_name}\n"
         
-        # Кнопка назад
+        # Кнопка назад зі збереженням контексту
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        # Формуємо callback_data з контекстом
+        if context == "date" and date_str:
+            callback_data = f"view_session_{session_id}_date_{date_str}"
+        elif context == "my_registrations":
+            callback_data = f"view_session_{session_id}_my_registrations"
+        else:
+            callback_data = f"view_session_{session_id}"
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"view_session_{session_id}")]
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=callback_data)]
         ])
         
         # Перевіряємо чи це повідомлення з фото
@@ -526,4 +636,26 @@ async def no_registrations_callback(callback: CallbackQuery):
 async def back_to_menu_callback(callback: CallbackQuery):
     """Повернутися до головного меню"""
     await callback.message.delete()
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_my_registrations")
+async def back_to_my_registrations(callback: CallbackQuery):
+    """Повернутися до моїх записів"""
+    # Видаляємо поточне повідомлення і викликаємо показ моїх записів
+    await callback.message.delete()
+    
+    # Створюємо об'єкт Message для виклику show_my_registrations
+    from aiogram.types import Message as Msg
+    new_message = Msg(
+        message_id=callback.message.message_id,
+        date=callback.message.date,
+        chat=callback.message.chat,
+        from_user=callback.from_user,
+        text="🎮 Мої записи"
+    )
+    # Прив'язуємо bot до message
+    new_message._bot = callback.bot
+    
+    await show_my_registrations(new_message)
     await callback.answer()
