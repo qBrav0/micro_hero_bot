@@ -1999,7 +1999,15 @@ async def start_admin_notification(message: Message, state: FSMContext):
     await state.set_state(AdminNotificationStates.waiting_for_message)
     await message.answer(
         "📢 <b>Сповіщення всім користувачам</b>\n\n"
-        "Надішліть повідомлення, яке буде відправлено всім користувачам з увімкненими сповіщеннями від адміністратора:",
+        "Надішліть повідомлення, яке буде відправлено всім користувачам з увімкненими сповіщеннями від адміністратора.\n\n"
+        "💡 <b>Підтримувані типи:</b>\n"
+        "• 📝 Текстові повідомлення\n"
+        "• 📸 Фото (з підписом)\n"
+        "• 🎭 Стікери\n"
+        "• 🎤 Голосові повідомлення\n"
+        "• 🎥 Відео (з підписом)\n"
+        "• 📄 Документи (з підписом)\n"
+        "• 🎵 Аудіо (з підписом)",
         parse_mode="HTML"
     )
 
@@ -2008,22 +2016,113 @@ async def start_admin_notification(message: Message, state: FSMContext):
 @admin_only
 async def process_admin_notification_message(message: Message, state: FSMContext):
     """Обробити повідомлення для адміністративного сповіщення"""
-    notification_text = message.text.strip()
+    # Визначаємо тип повідомлення та зберігаємо дані
+    notification_data = {}
+    message_type = "text"
     
-    if len(notification_text) < 5:
-        await message.answer("❌ Повідомлення має бути довшим за 5 символів. Спробуйте ще раз:")
+    if message.text:
+        # Текстове повідомлення
+        notification_text = message.text.strip()
+        if len(notification_text) < 5:
+            await message.answer("❌ Повідомлення має бути довшим за 5 символів. Спробуйте ще раз:")
+            return
+        
+        if len(notification_text) > 1000:
+            await message.answer("❌ Повідомлення не може бути довшим за 1000 символів. Спробуйте ще раз:")
+            return
+        
+        notification_data = {
+            "type": "text",
+            "text": notification_text
+        }
+        
+    elif message.photo:
+        # Фото з підписом
+        notification_data = {
+            "type": "photo",
+            "photo": message.photo[-1].file_id,  # Беремо найбільше фото
+            "caption": message.caption or ""
+        }
+        
+    elif message.sticker:
+        # Стікер
+        notification_data = {
+            "type": "sticker",
+            "sticker": message.sticker.file_id
+        }
+        
+    elif message.voice:
+        # Голосове повідомлення
+        notification_data = {
+            "type": "voice",
+            "voice": message.voice.file_id,
+            "caption": message.caption or ""
+        }
+        
+    elif message.video:
+        # Відео
+        notification_data = {
+            "type": "video",
+            "video": message.video.file_id,
+            "caption": message.caption or ""
+        }
+        
+    elif message.document:
+        # Документ
+        notification_data = {
+            "type": "document",
+            "document": message.document.file_id,
+            "caption": message.caption or ""
+        }
+        
+    elif message.audio:
+        # Аудіо
+        notification_data = {
+            "type": "audio",
+            "audio": message.audio.file_id,
+            "caption": message.caption or ""
+        }
+        
+    else:
+        await message.answer("❌ Підтримуються тільки текстові повідомлення, фото, стікери, голосові повідомлення, відео, документи та аудіо. Спробуйте ще раз:")
         return
     
-    if len(notification_text) > 1000:
-        await message.answer("❌ Повідомлення не може бути довшим за 1000 символів. Спробуйте ще раз:")
-        return
-    
-    await state.update_data(notification_text=notification_text)
+    await state.update_data(notification_data=notification_data)
     await state.set_state(AdminNotificationStates.waiting_for_confirmation)
     
     # Показуємо підтвердження
     text = f"📢 <b>Підтвердження сповіщення</b>\n\n"
-    text += f"<b>Ваше повідомлення:</b>\n{notification_text}\n\n"
+    
+    if notification_data["type"] == "text":
+        text += f"<b>Ваше повідомлення:</b>\n{notification_data['text']}\n\n"
+    elif notification_data["type"] == "photo":
+        text += f"<b>Тип:</b> 📸 Фото\n"
+        if notification_data["caption"]:
+            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+        text += "\n"
+    elif notification_data["type"] == "sticker":
+        text += f"<b>Тип:</b> 🎭 Стікер\n\n"
+    elif notification_data["type"] == "voice":
+        text += f"<b>Тип:</b> 🎤 Голосове повідомлення\n"
+        if notification_data["caption"]:
+            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+        text += "\n"
+    elif notification_data["type"] == "video":
+        text += f"<b>Тип:</b> 🎥 Відео\n"
+        if notification_data["caption"]:
+            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+        text += "\n"
+    elif notification_data["type"] == "document":
+        text += f"<b>Тип:</b> 📄 Документ\n"
+        if notification_data["caption"]:
+            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+        text += "\n"
+    elif notification_data["type"] == "audio":
+        text += f"<b>Тип:</b> 🎵 Аудіо\n"
+        if notification_data["caption"]:
+            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+        text += "\n"
+    
     text += "⚠️ Це повідомлення буде відправлено всім користувачам з увімкненими сповіщеннями від адміністратора (включаючи інших адмінів).\n\n"
     text += "Ви впевнені, що хочете надіслати це сповіщення?"
     
@@ -2043,10 +2142,10 @@ async def process_admin_notification_message(message: Message, state: FSMContext
 async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext):
     """Підтвердити відправку адміністративного сповіщення"""
     data = await state.get_data()
-    notification_text = data.get("notification_text")
+    notification_data = data.get("notification_data")
     
-    if not notification_text:
-        await callback.answer("❌ Помилка: текст сповіщення не знайдено", show_alert=True)
+    if not notification_data:
+        await callback.answer("❌ Помилка: дані сповіщення не знайдено", show_alert=True)
         await state.clear()
         return
     
@@ -2072,9 +2171,6 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
             await callback.answer()
             return
         
-        # Формуємо повідомлення
-        admin_message = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_text}"
-        
         # Відправляємо сповіщення
         from aiogram import Bot
         from config import BOT_TOKEN
@@ -2085,12 +2181,74 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
         
         for user in users_to_notify:
             try:
-                await bot.send_message(
-                    chat_id=user.telegram_id,
-                    text=admin_message,
-                    parse_mode="HTML"
-                )
+                # Відправляємо різні типи повідомлень
+                if notification_data["type"] == "text":
+                    admin_message = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['text']}"
+                    await bot.send_message(
+                        chat_id=user.telegram_id,
+                        text=admin_message,
+                        parse_mode="HTML"
+                    )
+                    
+                elif notification_data["type"] == "photo":
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    await bot.send_photo(
+                        chat_id=user.telegram_id,
+                        photo=notification_data['photo'],
+                        caption=admin_caption,
+                        parse_mode="HTML"
+                    )
+                    
+                elif notification_data["type"] == "sticker":
+                    # Спочатку надсилаємо текст, потім стікер
+                    await bot.send_message(
+                        chat_id=user.telegram_id,
+                        text="📢 <b>Сповіщення від адміністрації</b>",
+                        parse_mode="HTML"
+                    )
+                    await bot.send_sticker(
+                        chat_id=user.telegram_id,
+                        sticker=notification_data['sticker']
+                    )
+                    
+                elif notification_data["type"] == "voice":
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    await bot.send_voice(
+                        chat_id=user.telegram_id,
+                        voice=notification_data['voice'],
+                        caption=admin_caption,
+                        parse_mode="HTML"
+                    )
+                    
+                elif notification_data["type"] == "video":
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    await bot.send_video(
+                        chat_id=user.telegram_id,
+                        video=notification_data['video'],
+                        caption=admin_caption,
+                        parse_mode="HTML"
+                    )
+                    
+                elif notification_data["type"] == "document":
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    await bot.send_document(
+                        chat_id=user.telegram_id,
+                        document=notification_data['document'],
+                        caption=admin_caption,
+                        parse_mode="HTML"
+                    )
+                    
+                elif notification_data["type"] == "audio":
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    await bot.send_audio(
+                        chat_id=user.telegram_id,
+                        audio=notification_data['audio'],
+                        caption=admin_caption,
+                        parse_mode="HTML"
+                    )
+                
                 sent_count += 1
+                
             except Exception as e:
                 print(f"Помилка надсилання сповіщення користувачу {user.telegram_id}: {e}")
                 failed_count += 1
