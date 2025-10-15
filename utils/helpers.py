@@ -1,5 +1,4 @@
 from datetime import datetime, date, time
-from typing import Optional
 from aiogram import types
 
 
@@ -11,6 +10,17 @@ def format_datetime(dt: datetime) -> str:
 def format_time(t: time) -> str:
     """Форматувати time для відображення"""
     return t.strftime("%H:%M")
+
+
+def format_time_safe(t: time) -> str:
+    """Форматувати time для відображення з захистом від автолінків YouTube
+    
+    Використовує невидимий Unicode символ після двокрапки,
+    щоб порушити паттерн HH:MM, але час виглядає як звичайний
+    """
+    time_str = t.strftime("%H:%M")
+    # Додаємо невидимий символ після двокрапки (ZERO WIDTH SPACE)
+    return time_str.replace(":", ":\u200B")
 
 
 def format_date(d: date) -> str:

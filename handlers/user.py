@@ -1,13 +1,11 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.fsm.context import FSMContext
-from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 
 from database import get_session, get_user_by_telegram_id
-from services import ScheduleService, RegistrationService, GameService, NotificationService
-from keyboards import get_schedule_keyboard, get_game_actions_keyboard, get_my_registrations_keyboard
-from utils.helpers import format_date, format_time
+from services import ScheduleService, RegistrationService, NotificationService
+from keyboards import get_game_actions_keyboard
+from utils.helpers import format_date, format_time, format_time_safe
 from database.crud import get_game, get_registrations
 
 router = Router()
@@ -192,11 +190,11 @@ async def view_session_details(callback: CallbackQuery, skip_answer: bool = Fals
         
         # Формуємо текст
         text = f"🎮 <b>{game.name}</b>\n\n"
-        text += f"📝 {game.description}\n\n"
         text += f"📅 <b>Дата:</b> {format_date(game_session.date)}\n"
-        text += f"⏰ <b>Час:</b> {format_time(game_session.start_time)} - {format_time(game_session.end_time)}\n"
+        text += f"⏰ <b>Час:</b> {format_time_safe(game_session.start_time)} - {format_time_safe(game_session.end_time)}\n"
         text += f"👥 <b>Гравців:</b> {game.min_players}-{game.max_players}\n"
         text += f"⏱️ <b>Тривалість:</b> ~{game.avg_duration} хв\n\n"
+        text += f"📝 <b>Опис:</b>\n{game.description}\n\n"
         
         # Показуємо ціни на день
         if day_pricing:
