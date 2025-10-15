@@ -25,6 +25,9 @@ async def run_migrations(engine: AsyncEngine):
             # Міграція 3: Створення таблиці для відстеження відправлених нагадувань
             await migrate_create_reminder_sent_table(conn)
             
+            # Міграція 4: Додавання поля для сповіщень від адміністратора
+            await migrate_add_admin_notifications_field(conn)
+            
             logger.info("✅ Всі міграції виконано успішно")
             
         except Exception as e:
@@ -237,5 +240,78 @@ async def migrate_create_reminder_sent_table(conn):
         
     except Exception as e:
         logger.error(f"❌ Помилка при створенні таблиці remindersent: {e}")
+        raise
+
+
+async def migrate_add_admin_notifications_field(conn):
+    """
+    Додає поле admin_notifications_enabled до таблиці user
+    """
+    try:
+        # Визначаємо тип БД
+        db_name = conn.engine.dialect.name
+        
+        # Перевіряємо чи існує таблиця user
+        if db_name == 'sqlite':
+            result = await conn.execute(text(
+                """
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='user';
+                """
+            ))
+        else:  # PostgreSQL
+            result = await conn.execute(text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'user'
+                );
+                """
+            ))
+        
+        table_exists = result.scalar()
+        
+        if not table_exists:
+            logger.info("ℹ️ Таблиця user ще не створена, міграція буде застосована при створенні")
+            return
+        
+        # Перевіряємо чи вже існує поле admin_notifications_enabled
+        if db_name == 'sqlite':
+            result = await conn.execute(text(
+                "PRAGMA table_info(user);"
+            ))
+            columns = [row[1] for row in result.fetchall()]
+            column_exists = 'admin_notifications_enabled' in columns
+        else:  # PostgreSQL
+            result = await conn.execute(text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'user' AND column_name = 'admin_notifications_enabled'
+                );
+                """
+            ))
+            column_exists = result.scalar()
+        
+        if column_exists:
+            logger.info("ℹ️ Поле admin_notifications_enabled вже існує")
+            return
+        
+        logger.info("🔄 Додавання поля admin_notifications_enabled до таблиці user")
+        
+        # Додаємо поле
+        if db_name == 'sqlite':
+            await conn.execute(text(
+                'ALTER TABLE "user" ADD COLUMN admin_notifications_enabled BOOLEAN DEFAULT 1 NOT NULL;'
+            ))
+        else:  # PostgreSQL
+            await conn.execute(text(
+                'ALTER TABLE "user" ADD COLUMN admin_notifications_enabled BOOLEAN DEFAULT TRUE NOT NULL;'
+            ))
+        
+        logger.info("✅ Поле admin_notifications_enabled успішно додано")
+        
+    except Exception as e:
+        logger.error(f"❌ Помилка при додаванні поля admin_notifications_enabled: {e}")
         raise
 

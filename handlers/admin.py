@@ -65,6 +65,12 @@ class KickPlayerStates(StatesGroup):
     waiting_for_confirmation = State()
 
 
+# FSM стани для адміністративних сповіщень
+class AdminNotificationStates(StatesGroup):
+    waiting_for_message = State()
+    waiting_for_confirmation = State()
+
+
 @router.message(F.text == "⚙️ Адмін-панель")
 @admin_only
 async def show_admin_panel(message: Message):
@@ -1981,6 +1987,133 @@ async def delete_game_confirmed(callback: CallbackQuery):
 async def cancel_action(callback: CallbackQuery):
     """Скасувати дію"""
     await callback.message.edit_text("❌ Дію скасовано")
+    await callback.answer()
+
+
+# ===== АДМІНІСТРАТИВНІ СПОВІЩЕННЯ =====
+
+@router.message(F.text == "📢 Сповіщення всім")
+@admin_only
+async def start_admin_notification(message: Message, state: FSMContext):
+    """Почати процес створення адміністративного сповіщення"""
+    await state.set_state(AdminNotificationStates.waiting_for_message)
+    await message.answer(
+        "📢 <b>Сповіщення всім користувачам</b>\n\n"
+        "Надішліть повідомлення, яке буде відправлено всім користувачам з увімкненими сповіщеннями від адміністратора:",
+        parse_mode="HTML"
+    )
+
+
+@router.message(AdminNotificationStates.waiting_for_message)
+@admin_only
+async def process_admin_notification_message(message: Message, state: FSMContext):
+    """Обробити повідомлення для адміністративного сповіщення"""
+    notification_text = message.text.strip()
+    
+    if len(notification_text) < 5:
+        await message.answer("❌ Повідомлення має бути довшим за 5 символів. Спробуйте ще раз:")
+        return
+    
+    if len(notification_text) > 1000:
+        await message.answer("❌ Повідомлення не може бути довшим за 1000 символів. Спробуйте ще раз:")
+        return
+    
+    await state.update_data(notification_text=notification_text)
+    await state.set_state(AdminNotificationStates.waiting_for_confirmation)
+    
+    # Показуємо підтвердження
+    text = f"📢 <b>Підтвердження сповіщення</b>\n\n"
+    text += f"<b>Ваше повідомлення:</b>\n{notification_text}\n\n"
+    text += "⚠️ Це повідомлення буде відправлено всім користувачам з увімкненими сповіщеннями від адміністратора (включаючи інших адмінів).\n\n"
+    text += "Ви впевнені, що хочете надіслати це сповіщення?"
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Так, надіслати", callback_data="confirm_admin_notification"),
+            InlineKeyboardButton(text="❌ Скасувати", callback_data="cancel_admin_notification")
+        ]
+    ])
+    
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "confirm_admin_notification")
+@admin_only
+async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext):
+    """Підтвердити відправку адміністративного сповіщення"""
+    data = await state.get_data()
+    notification_text = data.get("notification_text")
+    
+    if not notification_text:
+        await callback.answer("❌ Помилка: текст сповіщення не знайдено", show_alert=True)
+        await state.clear()
+        return
+    
+    # Отримуємо всіх користувачів з увімкненими сповіщеннями
+    async for db_session in get_session():
+        from sqlmodel import select
+        from database.models import User
+        
+        result = await db_session.execute(
+            select(User).where(
+                User.admin_notifications_enabled == True
+                # Надсилаємо всім користувачам з увімкненими сповіщеннями
+            )
+        )
+        users_to_notify = result.scalars().all()
+        
+        if not users_to_notify:
+            await callback.message.edit_text(
+                "❌ Немає користувачів з увімкненими сповіщеннями від адміністратора.",
+                parse_mode="HTML"
+            )
+            await state.clear()
+            await callback.answer()
+            return
+        
+        # Формуємо повідомлення
+        admin_message = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_text}"
+        
+        # Відправляємо сповіщення
+        from aiogram import Bot
+        from config import BOT_TOKEN
+        bot = Bot(token=BOT_TOKEN)
+        
+        sent_count = 0
+        failed_count = 0
+        
+        for user in users_to_notify:
+            try:
+                await bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=admin_message,
+                    parse_mode="HTML"
+                )
+                sent_count += 1
+            except Exception as e:
+                print(f"Помилка надсилання сповіщення користувачу {user.telegram_id}: {e}")
+                failed_count += 1
+        
+        # Показуємо результат
+        result_text = f"✅ <b>Сповіщення надіслано!</b>\n\n"
+        result_text += f"📊 <b>Статистика:</b>\n"
+        result_text += f"• Успішно надіслано: {sent_count}\n"
+        result_text += f"• Помилок: {failed_count}\n"
+        result_text += f"• Всього користувачів: {len(users_to_notify)}"
+        
+        await callback.message.edit_text(result_text, parse_mode="HTML")
+    
+    await state.clear()
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_admin_notification")
+@admin_only
+async def cancel_admin_notification(callback: CallbackQuery, state: FSMContext):
+    """Скасувати адміністративне сповіщення"""
+    await callback.message.edit_text("❌ Сповіщення скасовано.")
+    await state.clear()
     await callback.answer()
 
 

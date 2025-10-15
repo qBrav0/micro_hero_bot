@@ -14,6 +14,7 @@ class User(SQLModel, table=True):
     is_admin: bool = Field(default=False)
     reminder_enabled: bool = Field(default=False)  # Чи увімкнені нагадування
     reminder_hours_before: Optional[int] = None  # За скільки годин нагадувати
+    admin_notifications_enabled: bool = Field(default=True)  # Чи увімкнені сповіщення від адміністратора
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

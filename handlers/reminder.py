@@ -17,9 +17,9 @@ class ReminderSettings(StatesGroup):
     waiting_for_hours = State()
 
 
-@router.message(F.text == "🔔 Налаштування нагадувань")
+@router.message(F.text == "🔔 Налаштування сповіщень")
 async def show_reminder_settings(message: Message):
-    """Показати меню налаштувань нагадувань"""
+    """Показати меню налаштувань сповіщень"""
     user_id = message.from_user.id
     
     async for session in get_session():
@@ -29,7 +29,66 @@ async def show_reminder_settings(message: Message):
             return
         
         # Формуємо текст з поточними налаштуваннями
-        text = "🔔 <b>Налаштування нагадувань</b>\n\n"
+        text = "🔔 <b>Налаштування сповіщень</b>\n\n"
+        
+        # Налаштування нагадувань про сесії
+        text += "📅 <b>Нагадування про сесії:</b>\n"
+        if user.reminder_enabled and user.reminder_hours_before:
+            text += f"✅ Увімкнено (за {user.reminder_hours_before} год.)\n\n"
+        else:
+            text += "❌ Вимкнено\n\n"
+        
+        # Налаштування сповіщень від адміністратора
+        text += "📢 <b>Сповіщення від адміністратора:</b>\n"
+        if user.admin_notifications_enabled:
+            text += "✅ Увімкнено\n\n"
+        else:
+            text += "❌ Вимкнено\n\n"
+        
+        text += "💡 <b>Про нагадування про сесії:</b>\n"
+        text += "• Ви отримаєте нагадування за вказану кількість годин до початку сесії\n"
+        text += "• Якщо у вас є кілька записів на один день, ви отримаєте одне нагадування\n"
+        text += "• Нагадування прийде за вказаний час до першої сесії цього дня\n"
+        text += "• У нагадуванні буде інформація про всі ваші записи на цей день\n\n"
+        
+        text += "💡 <b>Про сповіщення від адміністратора:</b>\n"
+        text += "• Ви отримаєте важливі повідомлення від адміністрації клубу\n"
+        text += "• Це можуть бути новини, зміни в розкладі, спеціальні пропозиції тощо\n\n"
+        
+        text += "Оберіть що хочете налаштувати:"
+        
+        # Клавіатура
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📅 Налаштувати нагадування про сесії",
+                    callback_data="reminder_settings"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📢 Налаштувати сповіщення від адміна",
+                    callback_data="admin_notifications_settings"
+                )
+            ]
+        ])
+        
+        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "reminder_settings")
+async def show_reminder_settings_menu(callback: CallbackQuery):
+    """Показати меню налаштувань нагадувань про сесії"""
+    user_id = callback.from_user.id
+    
+    async for session in get_session():
+        user = await get_user_by_telegram_id(session, user_id)
+        if not user:
+            await callback.answer("Помилка: користувача не знайдено", show_alert=True)
+            return
+        
+        # Формуємо текст з поточними налаштуваннями
+        text = "📅 <b>Налаштування нагадувань про сесії</b>\n\n"
         
         if user.reminder_enabled and user.reminder_hours_before:
             text += f"✅ <b>Статус:</b> Увімкнено\n"
@@ -57,10 +116,175 @@ async def show_reminder_settings(message: Message):
                     text="❌ Вимкнути нагадування",
                     callback_data="reminder_disable"
                 )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад до налаштувань",
+                    callback_data="back_to_notifications_settings"
+                )
             ]
         ])
         
-        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
+
+
+@router.callback_query(F.data == "admin_notifications_settings")
+async def show_admin_notifications_settings(callback: CallbackQuery):
+    """Показати меню налаштувань сповіщень від адміністратора"""
+    user_id = callback.from_user.id
+    
+    async for session in get_session():
+        user = await get_user_by_telegram_id(session, user_id)
+        if not user:
+            await callback.answer("Помилка: користувача не знайдено", show_alert=True)
+            return
+        
+        # Формуємо текст з поточними налаштуваннями
+        text = "📢 <b>Налаштування сповіщень від адміністратора</b>\n\n"
+        
+        if user.admin_notifications_enabled:
+            text += "✅ <b>Статус:</b> Увімкнено\n\n"
+        else:
+            text += "❌ <b>Статус:</b> Вимкнено\n\n"
+        
+        text += "💡 <b>Про сповіщення від адміністратора:</b>\n"
+        text += "• Ви отримаєте важливі повідомлення від адміністрації клубу\n"
+        text += "• Це можуть бути новини, зміни в розкладі, спеціальні пропозиції тощо\n"
+        text += "• Сповіщення надсилаються тільки при необхідності\n"
+        text += "• Ви можете вимкнути їх в будь-який час\n\n"
+        text += "Оберіть дію:"
+        
+        # Клавіатура
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Увімкнути сповіщення",
+                    callback_data="admin_notifications_enable"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Вимкнути сповіщення",
+                    callback_data="admin_notifications_disable"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад до налаштувань",
+                    callback_data="back_to_notifications_settings"
+                )
+            ]
+        ])
+        
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
+
+
+@router.callback_query(F.data == "admin_notifications_enable")
+async def enable_admin_notifications(callback: CallbackQuery):
+    """Увімкнути сповіщення від адміністратора"""
+    user_id = callback.from_user.id
+    
+    async for session in get_session():
+        user = await get_user_by_telegram_id(session, user_id)
+        if not user:
+            await callback.answer("Помилка: користувача не знайдено", show_alert=True)
+            return
+        
+        # Увімкнути сповіщення
+        user.admin_notifications_enabled = True
+        await update_user(session, user)
+        
+        text = "✅ <b>Сповіщення від адміністратора увімкнено</b>\n\n"
+        text += "Тепер ви будете отримувати важливі повідомлення від адміністрації клубу.\n"
+        text += "Ви можете вимкнути їх в будь-який час через меню налаштувань."
+        
+        await callback.message.edit_text(text, parse_mode="HTML")
+        await callback.answer("Сповіщення увімкнено")
+
+
+@router.callback_query(F.data == "admin_notifications_disable")
+async def disable_admin_notifications(callback: CallbackQuery):
+    """Вимкнути сповіщення від адміністратора"""
+    user_id = callback.from_user.id
+    
+    async for session in get_session():
+        user = await get_user_by_telegram_id(session, user_id)
+        if not user:
+            await callback.answer("Помилка: користувача не знайдено", show_alert=True)
+            return
+        
+        # Вимкнути сповіщення
+        user.admin_notifications_enabled = False
+        await update_user(session, user)
+        
+        text = "❌ <b>Сповіщення від адміністратора вимкнено</b>\n\n"
+        text += "Ви більше не будете отримувати сповіщення від адміністрації.\n"
+        text += "Ви можете увімкнути їх знову в будь-який час через меню налаштувань."
+        
+        await callback.message.edit_text(text, parse_mode="HTML")
+        await callback.answer("Сповіщення вимкнено")
+
+
+@router.callback_query(F.data == "back_to_notifications_settings")
+async def back_to_notifications_settings(callback: CallbackQuery):
+    """Повернутися до головного меню налаштувань сповіщень"""
+    user_id = callback.from_user.id
+    
+    async for session in get_session():
+        user = await get_user_by_telegram_id(session, user_id)
+        if not user:
+            await callback.answer("Помилка: користувача не знайдено", show_alert=True)
+            return
+        
+        # Формуємо текст з поточними налаштуваннями
+        text = "🔔 <b>Налаштування сповіщень</b>\n\n"
+        
+        # Налаштування нагадувань про сесії
+        text += "📅 <b>Нагадування про сесії:</b>\n"
+        if user.reminder_enabled and user.reminder_hours_before:
+            text += f"✅ Увімкнено (за {user.reminder_hours_before} год.)\n\n"
+        else:
+            text += "❌ Вимкнено\n\n"
+        
+        # Налаштування сповіщень від адміністратора
+        text += "📢 <b>Сповіщення від адміністратора:</b>\n"
+        if user.admin_notifications_enabled:
+            text += "✅ Увімкнено\n\n"
+        else:
+            text += "❌ Вимкнено\n\n"
+        
+        text += "💡 <b>Про нагадування про сесії:</b>\n"
+        text += "• Ви отримаєте нагадування за вказану кількість годин до початку сесії\n"
+        text += "• Якщо у вас є кілька записів на один день, ви отримаєте одне нагадування\n"
+        text += "• Нагадування прийде за вказаний час до першої сесії цього дня\n"
+        text += "• У нагадуванні буде інформація про всі ваші записи на цей день\n\n"
+        
+        text += "💡 <b>Про сповіщення від адміністратора:</b>\n"
+        text += "• Ви отримаєте важливі повідомлення від адміністрації клубу\n"
+        text += "• Це можуть бути новини, зміни в розкладі, спеціальні пропозиції тощо\n\n"
+        
+        text += "Оберіть що хочете налаштувати:"
+        
+        # Клавіатура
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📅 Налаштувати нагадування про сесії",
+                    callback_data="reminder_settings"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📢 Налаштувати сповіщення від адміна",
+                    callback_data="admin_notifications_settings"
+                )
+            ]
+        ])
+        
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
 
 
 @router.callback_query(F.data == "reminder_disable")
@@ -166,7 +390,7 @@ async def process_reminder_hours(message: Message, state: FSMContext):
         text += "• Якщо у вас кілька записів на один день, нагадування прийде одне\n"
         text += f"• Воно прийде за {hours} год. до першої (найранішої) сесії дня\n"
         text += "• У ньому буде інформація про всі ваші записи на цей день\n\n"
-        text += "Ви можете змінити налаштування в будь-який час через меню 🔔 Налаштування нагадувань."
+        text += "Ви можете змінити налаштування в будь-який час через меню 🔔 Налаштування сповіщень."
         
         await message.answer(text, parse_mode="HTML")
         await state.clear()
