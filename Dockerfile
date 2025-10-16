@@ -15,7 +15,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 # Створюємо директорію для логів та зображень
+# Примітка: /app/static/images буде підключено як Railway Persistent Volume
 RUN mkdir -p /app/logs /app/static/images
+
+# Встановлюємо правильні права доступу для volume
+RUN chmod 755 /app/static/images
 
 # Встановлюємо змінну середовища для Python
 ENV PYTHONUNBUFFERED=1

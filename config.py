@@ -45,6 +45,9 @@ PAYMENT_INFO = os.getenv("PAYMENT_INFO", None)
 PAYMENT_CARD_NUMBER = os.getenv("PAYMENT_CARD_NUMBER", "")
 PAYMENT_BANK_LINK = os.getenv("PAYMENT_BANK_LINK", "")
 
+# Railway Persistent Volume для збереження імейджів
+# Налаштування volume: /app/static/images
+
 # Функція для динамічного оновлення конфігурації
 def reload_config():
     """Перезавантажити конфігурацію з .env файлу"""

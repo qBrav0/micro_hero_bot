@@ -12,6 +12,10 @@
     {
       "name": "bot-data",
       "mountPath": "/app/data"
+    },
+    {
+      "name": "images-storage",
+      "mountPath": "/app/static/images"
     }
   ]
 }
