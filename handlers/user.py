@@ -119,7 +119,36 @@ async def show_date_sessions(callback: CallbackQuery):
                 for row in keyboard for btn in row
             ])
             
-            await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            # Перевіряємо, чи повідомлення містить фото
+            has_photo = callback.message.photo is not None
+            
+            if has_photo:
+                # Якщо є фото, оновлюємо caption
+                try:
+                    await callback.message.edit_caption(
+                        caption=text,
+                        reply_markup=kb,
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    # Якщо не вдалося оновити caption, спробуємо видалити і відправити нове
+                    try:
+                        await callback.message.delete()
+                        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+                    except Exception:
+                        pass
+            else:
+                # Якщо немає фото, редагуємо текст
+                try:
+                    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+                except Exception as e:
+                    # Якщо не вдалося редагувати текст, спробуємо видалити і відправити нове
+                    try:
+                        await callback.message.delete()
+                        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+                    except Exception:
+                        pass
+            
             await callback.answer()
             return
         
@@ -131,7 +160,36 @@ async def show_date_sessions(callback: CallbackQuery):
             for row in keyboard for btn in row
         ])
         
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        # Перевіряємо, чи повідомлення містить фото
+        has_photo = callback.message.photo is not None
+        
+        if has_photo:
+            # Якщо є фото, оновлюємо caption
+            try:
+                await callback.message.edit_caption(
+                    caption=text,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                # Якщо не вдалося оновити caption, спробуємо видалити і відправити нове
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+                except Exception:
+                    pass
+        else:
+            # Якщо немає фото, редагуємо текст
+            try:
+                await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            except Exception as e:
+                # Якщо не вдалося редагувати текст, спробуємо видалити і відправити нове
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+                except Exception:
+                    pass
+        
         await callback.answer()
 
 
@@ -668,9 +726,21 @@ async def back_to_schedule(callback: CallbackQuery):
                 for row in keyboard for btn in row
             ])
             
+            # Перевіряємо, чи повідомлення містить фото
+            has_photo = callback.message.photo is not None
+            
             # Спробуємо редагувати повідомлення
             try:
-                await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+                if has_photo:
+                    # Якщо є фото, оновлюємо caption
+                    await callback.message.edit_caption(
+                        caption=text,
+                        reply_markup=kb,
+                        parse_mode="HTML"
+                    )
+                else:
+                    # Якщо немає фото, редагуємо текст
+                    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
             except Exception as edit_error:
                 # Якщо не вдалося редагувати, спробуємо видалити і відправити нове
                 try:
