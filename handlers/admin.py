@@ -219,12 +219,28 @@ async def process_game_image(message: Message, state: FSMContext):
     
     # Створюємо шлях для збереження
     import os
-    os.makedirs("static/images", exist_ok=True)
+    import logging
     
-    file_path = f"static/images/{photo.file_id}.jpg"
+    images_dir = "static/images"
+    os.makedirs(images_dir, exist_ok=True)
+    
+    file_path = f"{images_dir}/{photo.file_id}.jpg"
+    
+    # Логуємо для діагностики
+    logging.info(f"Зберігаємо імейдж: {file_path}")
+    logging.info(f"Директорія існує: {os.path.exists(images_dir)}")
+    logging.info(f"Права доступу: {oct(os.stat(images_dir).st_mode)[-3:]}")
     
     # Завантажуємо файл
     await message.bot.download(photo, destination=file_path)
+    
+    # Перевіряємо, чи файл збережений
+    if os.path.exists(file_path):
+        logging.info(f"✅ Імейдж успішно збережений: {file_path}")
+        await message.answer("✅ Зображення збережено!")
+    else:
+        logging.error(f"❌ Помилка збереження імейджа: {file_path}")
+        await message.answer("❌ Помилка збереження зображення!")
     
     await state.update_data(image_path=file_path)
     await save_game(message, state)

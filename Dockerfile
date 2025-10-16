@@ -19,7 +19,8 @@ COPY . .
 RUN mkdir -p /app/logs /app/static/images
 
 # Встановлюємо правильні права доступу для volume
-RUN chmod 755 /app/static/images
+RUN chmod 777 /app/static/images
+RUN chown -R root:root /app/static/images
 
 # Встановлюємо змінну середовища для Python
 ENV PYTHONUNBUFFERED=1
