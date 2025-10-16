@@ -1,7 +1,8 @@
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from keyboards import get_main_menu
 from config import ADMIN_IDS
+import os
 
 router = Router()
 
@@ -91,19 +92,236 @@ async def show_top_players(message: Message):
 
 @router.message(F.text == "🎲 База ігор")
 async def show_game_database(message: Message):
-    """Показати базу ігор (поки що в розробці)"""
-    import random
+    """Показати базу ігор"""
+    from database import get_session
+    from services import GameService
     
-    fun_messages = [
-        "🎮 Ой! База ігор зараз вчить Telegram зберігати фоточки! 📸\n\nА поки що - всі ігри в розкладі! 🔍",
-        "🎲 Хмм... База ігор тестує file_id магію! ✨\n\nНе журіться - розклад працює ідеально! 📅",
-        "🎯 Чекайте-чекайте! База ігор налаштовує телепортацію фото! 🌌\n\nА зараз - дивіться розклад! 📋",
-        "🎪 База ігор репетирує магічний трюк зі зникаючими файлами! 🎩✨\n\nСпойлер: файли більше не зникають! А поки що - розклад! 🎭",
-        "🎨 База ігор малює нову реальність без локальних файлів! 🖌️\n\nМайбутнє настало - дивіться розклад! 🚀"
-    ]
+    async for session in get_session():
+        games = await GameService.get_all_active_games(session)
+        
+        if not games:
+            await message.answer(
+                "🎲 <b>База ігор</b>\n\n"
+                "Наразі база ігор порожня.\n\n"
+                "Слідкуйте за оновленнями!",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Показуємо першу сторінку списку ігор
+        await show_games_database_page(message, session, page=0)
+
+
+async def show_games_database_page(message_or_callback, db_session, page: int = 0):
+    """Показати сторінку списку ігор для користувача"""
+    from services import GameService
     
-    chosen_message = random.choice(fun_messages)
-    await message.answer(chosen_message)
+    games = await GameService.get_all_active_games(db_session)
+    
+    if not games:
+        text = "🎲 <b>База ігор</b>\n\nНаразі база ігор порожня."
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+        
+        if isinstance(message_or_callback, Message):
+            await message_or_callback.answer(text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            await message_or_callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        return
+    
+    # Обчислюємо пагінацію
+    items_per_page = 7
+    start_idx = page * items_per_page
+    end_idx = start_idx + items_per_page
+    total_pages = (len(games) + items_per_page - 1) // items_per_page
+    
+    text = f"🎲 <b>База ігор</b> (Сторінка {page + 1}/{total_pages})\n\n"
+    text += "Оберіть гру для перегляду детальної інформації:"
+    
+    # Створюємо клавіатуру з іграми
+    keyboard_buttons = []
+    page_games = games[start_idx:end_idx]
+    
+    for game in page_games:
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text=f"🎮 {game.name}",
+                callback_data=f"user_view_game_{game.id}"
+            )
+        ])
+    
+    # Додаємо кнопки пагінації
+    if total_pages > 1:
+        pagination_row = []
+        
+        if page > 0:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    text="◀️ Попередня",
+                    callback_data=f"user_games_page_{page-1}"
+                )
+            )
+        
+        if page < total_pages - 1:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    text="Наступна ▶️",
+                    callback_data=f"user_games_page_{page+1}"
+                )
+            )
+        
+        if pagination_row:
+            keyboard_buttons.append(pagination_row)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
+    if isinstance(message_or_callback, Message):
+        await message_or_callback.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        # Перевіряємо чи є фото в повідомленні
+        has_photo = message_or_callback.message.photo is not None
+        
+        if has_photo:
+            # Якщо є фото, видаляємо його і відправляємо нове текстове повідомлення
+            try:
+                await message_or_callback.message.delete()
+                await message_or_callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception:
+                pass
+        else:
+            # Якщо немає фото, редагуємо текст
+            try:
+                await message_or_callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception:
+                pass
+
+
+@router.callback_query(F.data.startswith("user_games_page_"))
+async def handle_user_games_pagination(callback: CallbackQuery):
+    """Обробка пагінації списку ігор для користувача"""
+    page = int(callback.data.split("_")[-1])
+    
+    from database import get_session
+    async for session in get_session():
+        await show_games_database_page(callback, session, page=page)
+    
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("user_view_game_"))
+async def user_view_game_details(callback: CallbackQuery):
+    """Показати детальну інформацію про гру"""
+    game_id = int(callback.data.split("_")[-1])
+    
+    from database import get_session
+    from services import GameService
+    
+    async for session in get_session():
+        game = await GameService.get_game_by_id(session, game_id)
+        
+        if not game:
+            await callback.answer("❌ Гру не знайдено", show_alert=True)
+            return
+        
+        # Формуємо текст з інформацією про гру
+        text = f"🎮 <b>{game.name}</b>\n\n"
+        text += f"📝 <b>Опис:</b>\n{game.description}\n\n"
+        text += f"👥 <b>Кількість гравців:</b> {game.min_players}-{game.max_players}\n"
+        text += f"⏱️ <b>Середня тривалість:</b> ~{game.avg_duration} хв\n"
+        
+        # Кнопка повернення назад
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад до списку", callback_data="user_back_to_games_list")]
+        ])
+        
+        # Перевіряємо чи є зображення (Telegram file_id або локальний файл)
+        has_image = game.image_file_id or (game.image_path and os.path.exists(game.image_path))
+        
+        # Перевіряємо чи поточне повідомлення містить фото
+        has_photo = callback.message.photo is not None
+        
+        if has_image:
+            if has_photo:
+                # Якщо вже є фото, оновлюємо caption
+                try:
+                    await callback.message.edit_caption(
+                        caption=text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    # Якщо не вдалося оновити, видаляємо і відправляємо нове
+                    try:
+                        await callback.message.delete()
+                        
+                        if game.image_file_id:
+                            await callback.message.answer_photo(
+                                photo=game.image_file_id,
+                                caption=text,
+                                reply_markup=keyboard,
+                                parse_mode="HTML"
+                            )
+                        elif game.image_path:
+                            from aiogram.types import FSInputFile
+                            photo = FSInputFile(game.image_path)
+                            await callback.message.answer_photo(
+                                photo=photo,
+                                caption=text,
+                                reply_markup=keyboard,
+                                parse_mode="HTML"
+                            )
+                    except Exception:
+                        pass
+            else:
+                # Якщо немає фото, відправляємо нове фото з підписом
+                try:
+                    await callback.message.delete()
+                    
+                    if game.image_file_id:
+                        await callback.message.answer_photo(
+                            photo=game.image_file_id,
+                            caption=text,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+                    elif game.image_path:
+                        from aiogram.types import FSInputFile
+                        photo = FSInputFile(game.image_path)
+                        await callback.message.answer_photo(
+                            photo=photo,
+                            caption=text,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+                except Exception:
+                    # Якщо не вдалося відправити фото, відправляємо тільки текст
+                    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            # Якщо немає фото гри
+            if has_photo:
+                # Якщо є фото, але гри немає фото, видаляємо і відправляємо текст
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                except Exception:
+                    pass
+            else:
+                # Відправляємо тільки текст
+                try:
+                    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+                except Exception:
+                    pass
+        
+        await callback.answer()
+
+
+@router.callback_query(F.data == "user_back_to_games_list")
+async def user_back_to_games_list(callback: CallbackQuery):
+    """Повернутися до списку ігор"""
+    from database import get_session
+    async for session in get_session():
+        await show_games_database_page(callback, session, page=0)
+    
+    await callback.answer()
 
 
 @router.message(F.text == "💳 Оплата")
