@@ -18,6 +18,7 @@ class GameService:
         min_players: int,
         max_players: int,
         avg_duration: int,
+        image_file_id: Optional[str] = None,
         image_path: Optional[str] = None
     ) -> Game:
         """Створити нову гру"""
@@ -28,6 +29,7 @@ class GameService:
             min_players=min_players,
             max_players=max_players,
             avg_duration=avg_duration,
+            image_file_id=image_file_id,
             image_path=image_path
         )
     

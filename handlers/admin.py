@@ -214,42 +214,25 @@ async def process_duration(message: Message, state: FSMContext):
 @router.message(AddGameStates.waiting_for_image, F.photo)
 async def process_game_image(message: Message, state: FSMContext):
     """Обробка зображення гри"""
-    # Зберігаємо фото
-    photo = message.photo[-1]  # Беремо найбільше фото
-    
-    # Створюємо шлях для збереження
-    import os
     import logging
     
-    images_dir = "static/images"
-    os.makedirs(images_dir, exist_ok=True)
+    # Зберігаємо Telegram file_id замість локального файлу
+    photo = message.photo[-1]  # Беремо найбільше фото
+    file_id = photo.file_id
     
-    file_path = f"{images_dir}/{photo.file_id}.jpg"
+    logging.info(f"✅ Збережено Telegram file_id: {file_id}")
     
-    # Логуємо для діагностики
-    logging.info(f"Зберігаємо імейдж: {file_path}")
-    logging.info(f"Директорія існує: {os.path.exists(images_dir)}")
-    logging.info(f"Права доступу: {oct(os.stat(images_dir).st_mode)[-3:]}")
+    # Зберігаємо file_id в стан
+    await state.update_data(image_file_id=file_id)
+    await message.answer("✅ Зображення збережено!")
     
-    # Завантажуємо файл
-    await message.bot.download(photo, destination=file_path)
-    
-    # Перевіряємо, чи файл збережений
-    if os.path.exists(file_path):
-        logging.info(f"✅ Імейдж успішно збережений: {file_path}")
-        await message.answer("✅ Зображення збережено!")
-    else:
-        logging.error(f"❌ Помилка збереження імейджа: {file_path}")
-        await message.answer("❌ Помилка збереження зображення!")
-    
-    await state.update_data(image_path=file_path)
     await save_game(message, state)
 
 
 @router.message(AddGameStates.waiting_for_image, F.text == "/skip")
 async def skip_game_image(message: Message, state: FSMContext):
     """Пропустити зображення"""
-    await state.update_data(image_path=None)
+    await state.update_data(image_file_id=None)
     await save_game(message, state)
 
 
@@ -265,7 +248,7 @@ async def save_game(message: Message, state: FSMContext):
             min_players=data["min_players"],
             max_players=data["max_players"],
             avg_duration=data["avg_duration"],
-            image_path=data.get("image_path")
+            image_file_id=data.get("image_file_id")
         )
         
         await message.answer(
@@ -469,8 +452,10 @@ async def show_game_edit_menu(callback: CallbackQuery):
         from keyboards import get_game_edit_keyboard
         keyboard = get_game_edit_keyboard(game_id)
         
-        # Перевіряємо чи є фото гри
-        if game.image_path and os.path.exists(game.image_path):
+        # Перевіряємо чи є фото гри (Telegram file_id або локальний файл)
+        has_image = game.image_file_id or (game.image_path and os.path.exists(game.image_path))
+        
+        if has_image:
             # Перевіряємо, чи поточне повідомлення містить фото
             has_photo = callback.message.photo is not None
             
@@ -486,6 +471,38 @@ async def show_game_edit_menu(callback: CallbackQuery):
                     # Якщо не вдалося оновити caption, видаляємо і відправляємо нове
                     try:
                         await callback.message.delete()
+                        
+                        # Використовуємо file_id якщо є, інакше локальний файл
+                        if game.image_file_id:
+                            await callback.message.answer_photo(
+                                photo=game.image_file_id,
+                                caption=text,
+                                reply_markup=keyboard,
+                                parse_mode="HTML"
+                            )
+                        elif game.image_path:
+                            from aiogram.types import FSInputFile
+                            photo = FSInputFile(game.image_path)
+                            await callback.message.answer_photo(
+                                photo=photo,
+                                caption=text,
+                                reply_markup=keyboard,
+                                parse_mode="HTML"
+                            )
+                    except Exception:
+                        pass
+            else:
+                # Якщо немає фото, відправляємо нове фото з підписом
+                try:
+                    # Використовуємо file_id якщо є, інакше локальний файл
+                    if game.image_file_id:
+                        await callback.message.answer_photo(
+                            photo=game.image_file_id,
+                            caption=text,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+                    elif game.image_path:
                         from aiogram.types import FSInputFile
                         photo = FSInputFile(game.image_path)
                         await callback.message.answer_photo(
@@ -494,19 +511,6 @@ async def show_game_edit_menu(callback: CallbackQuery):
                             reply_markup=keyboard,
                             parse_mode="HTML"
                         )
-                    except Exception:
-                        pass
-            else:
-                # Якщо немає фото, відправляємо нове фото з підписом
-                try:
-                    from aiogram.types import FSInputFile
-                    photo = FSInputFile(game.image_path)
-                    await callback.message.answer_photo(
-                        photo=photo,
-                        caption=text,
-                        reply_markup=keyboard,
-                        parse_mode="HTML"
-                    )
                 except Exception as e:
                     # Якщо не вдалося відправити фото, відправляємо тільки текст
                     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
@@ -2073,20 +2077,20 @@ async def start_edit_image(callback: CallbackQuery, state: FSMContext):
 @router.message(EditGameStates.waiting_for_image, F.photo)
 async def process_edit_image(message: Message, state: FSMContext):
     """Обробка нового зображення гри"""
-    photo = message.photo[-1]
+    import logging
     
-    import os
-    os.makedirs("static/images", exist_ok=True)
-    file_path = f"static/images/{photo.file_id}.jpg"
-    await message.bot.download(photo, destination=file_path)
+    photo = message.photo[-1]
+    file_id = photo.file_id
     
     data = await state.get_data()
     game_id = data.get("edit_game_id")
     
+    logging.info(f"✅ Оновлено Telegram file_id для гри {game_id}: {file_id}")
+    
     async for session in get_session():
         game = await GameService.get_game_by_id(session, game_id)
         if game:
-            await GameService.update_game_info(session, game, image_path=file_path)
+            await GameService.update_game_info(session, game, image_file_id=file_id)
             await message.answer(
                 "✅ Зображення гри змінено!",
                 reply_markup=get_admin_games_menu()

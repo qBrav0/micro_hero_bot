@@ -34,7 +34,8 @@ class Game(SQLModel, table=True):
     min_players: int
     max_players: int
     avg_duration: int  # в хвилинах
-    image_path: Optional[str] = None
+    image_path: Optional[str] = None  # Шлях до локального файлу (deprecated)
+    image_file_id: Optional[str] = None  # Telegram file_id для відображення фото
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
