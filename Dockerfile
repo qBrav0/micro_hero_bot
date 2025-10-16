@@ -22,8 +22,9 @@ RUN mkdir -p /app/logs /app/static/images
 RUN chmod 777 /app/static/images
 RUN chown -R root:root /app/static/images
 
-# Встановлюємо змінну середовища для Python
+# Встановлюємо змінні середовища
 ENV PYTHONUNBUFFERED=1
+ENV RAILWAY_RUN_UID=0
 
 # Копіюємо скрипт запуску
 COPY start.sh /app/start.sh
