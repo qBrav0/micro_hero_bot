@@ -5,11 +5,11 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Копіюємо файл залежностей
-COPY pyproject.toml .
+COPY requirements.txt .
 
 # Встановлюємо Python залежності
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir aiogram>=3.0.0 sqlmodel>=0.0.14 python-dotenv>=1.0.0 asyncpg>=0.29.0
+    pip install --no-cache-dir -r requirements.txt
 
 # Копіюємо весь проект
 COPY . .
