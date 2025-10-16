@@ -379,21 +379,59 @@ async def show_game_edit_menu(callback: CallbackQuery):
         
         # Перевіряємо чи є фото гри
         if game.image_path and os.path.exists(game.image_path):
-            # Відправляємо фото з підписом
-            try:
-                with open(game.image_path, 'rb') as photo_file:
-                    await callback.message.answer_photo(
-                        photo=photo_file,
+            # Перевіряємо, чи поточне повідомлення містить фото
+            has_photo = callback.message.photo is not None
+            
+            if has_photo:
+                # Якщо вже є фото, оновлюємо caption
+                try:
+                    await callback.message.edit_caption(
                         caption=text,
                         reply_markup=keyboard,
                         parse_mode="HTML"
                     )
-            except Exception as e:
-                # Якщо не вдалося відправити фото, відправляємо тільки текст
-                await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+                except Exception:
+                    # Якщо не вдалося оновити caption, видаляємо і відправляємо нове
+                    try:
+                        await callback.message.delete()
+                        from aiogram.types import FSInputFile
+                        photo = FSInputFile(game.image_path)
+                        await callback.message.answer_photo(
+                            photo=photo,
+                            caption=text,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
+            else:
+                # Якщо немає фото, відправляємо нове фото з підписом
+                try:
+                    from aiogram.types import FSInputFile
+                    photo = FSInputFile(game.image_path)
+                    await callback.message.answer_photo(
+                        photo=photo,
+                        caption=text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    # Якщо не вдалося відправити фото, відправляємо тільки текст
+                    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         else:
-            # Відправляємо тільки текст
-            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            # Якщо немає фото гри, перевіряємо чи поточне повідомлення містить фото
+            has_photo = callback.message.photo is not None
+            
+            if has_photo:
+                # Якщо є фото, але гри немає фото, видаляємо і відправляємо текст
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                except Exception:
+                    pass
+            else:
+                # Відправляємо тільки текст
+                await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         
         await callback.answer()
 
