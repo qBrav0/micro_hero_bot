@@ -3,6 +3,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from datetime import date
+import os
 
 from database import get_session
 from services import GameService, ScheduleService
@@ -376,7 +377,24 @@ async def show_game_edit_menu(callback: CallbackQuery):
         from keyboards import get_game_edit_keyboard
         keyboard = get_game_edit_keyboard(game_id)
         
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        # Перевіряємо чи є фото гри
+        if game.image_path and os.path.exists(game.image_path):
+            # Відправляємо фото з підписом
+            try:
+                with open(game.image_path, 'rb') as photo_file:
+                    await callback.message.answer_photo(
+                        photo=photo_file,
+                        caption=text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+            except Exception as e:
+                # Якщо не вдалося відправити фото, відправляємо тільки текст
+                await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            # Відправляємо тільки текст
+            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        
         await callback.answer()
 
 
@@ -1735,7 +1753,7 @@ async def start_edit_game_name(callback: CallbackQuery, state: FSMContext):
     await state.update_data(edit_game_id=game_id)
     await state.set_state(EditGameStates.waiting_for_name)
     
-    await callback.message.edit_text("✏️ Введіть нову назву гри:")
+    await callback.message.answer("✏️ Введіть нову назву гри:")
     await callback.answer()
 
 
@@ -1765,7 +1783,7 @@ async def start_edit_game_description(callback: CallbackQuery, state: FSMContext
     await state.update_data(edit_game_id=game_id)
     await state.set_state(EditGameStates.waiting_for_description)
     
-    await callback.message.edit_text("📝 Введіть новий опис гри:")
+    await callback.message.answer("📝 Введіть новий опис гри:")
     await callback.answer()
 
 
@@ -1794,7 +1812,7 @@ async def start_edit_min_players(callback: CallbackQuery, state: FSMContext):
     await state.update_data(edit_game_id=game_id)
     await state.set_state(EditGameStates.waiting_for_min_players)
     
-    await callback.message.edit_text("👥 Введіть нову мінімальну кількість гравців:")
+    await callback.message.answer("👥 Введіть нову мінімальну кількість гравців:")
     await callback.answer()
 
 
@@ -1838,7 +1856,7 @@ async def start_edit_max_players(callback: CallbackQuery, state: FSMContext):
     await state.update_data(edit_game_id=game_id)
     await state.set_state(EditGameStates.waiting_for_max_players)
     
-    await callback.message.edit_text("👥 Введіть нову максимальну кількість гравців:")
+    await callback.message.answer("👥 Введіть нову максимальну кількість гравців:")
     await callback.answer()
 
 
@@ -1878,7 +1896,7 @@ async def start_edit_duration(callback: CallbackQuery, state: FSMContext):
     await state.update_data(edit_game_id=game_id)
     await state.set_state(EditGameStates.waiting_for_duration)
     
-    await callback.message.edit_text("⏱️ Введіть нову середню тривалість партії (в хвилинах):")
+    await callback.message.answer("⏱️ Введіть нову середню тривалість партії (в хвилинах):")
     await callback.answer()
 
 
@@ -1918,7 +1936,7 @@ async def start_edit_image(callback: CallbackQuery, state: FSMContext):
     await state.update_data(edit_game_id=game_id)
     await state.set_state(EditGameStates.waiting_for_image)
     
-    await callback.message.edit_text("📸 Надішліть нове зображення гри:")
+    await callback.message.answer("📸 Надішліть нове зображення гри:")
     await callback.answer()
 
 
@@ -1965,7 +1983,17 @@ async def confirm_delete_game(callback: CallbackQuery):
         
         keyboard = get_confirmation_keyboard("delete_game", game_id)
         
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        # Перевіряємо чи є фото в попередньому повідомленні
+        has_photo = callback.message.photo is not None and len(callback.message.photo) > 0
+        
+        if has_photo:
+            # Якщо попереднє повідомлення містило фото, видаляємо його і відправляємо нове
+            await callback.message.delete()
+            await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            # Якщо попереднє повідомлення було текстовим, редагуємо його
+            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        
         await callback.answer()
 
 
@@ -1977,7 +2005,17 @@ async def delete_game_confirmed(callback: CallbackQuery):
     async for session in get_session():
         success = await GameService.deactivate_game(session, game_id)
         if success:
-            await callback.message.edit_text("✅ Гру успішно видалено!")
+            # Перевіряємо чи є фото в попередньому повідомленні
+            has_photo = callback.message.photo is not None and len(callback.message.photo) > 0
+            
+            if has_photo:
+                # Якщо попереднє повідомлення містило фото, видаляємо його і відправляємо нове
+                await callback.message.delete()
+                await callback.message.answer("✅ Гру успішно видалено!")
+            else:
+                # Якщо попереднє повідомлення було текстовим, редагуємо його
+                await callback.message.edit_text("✅ Гру успішно видалено!")
+            
             await callback.answer()
         else:
             await callback.answer("❌ Помилка при видаленні гри", show_alert=True)
@@ -1986,7 +2024,17 @@ async def delete_game_confirmed(callback: CallbackQuery):
 @router.callback_query(F.data == "cancel_action")
 async def cancel_action(callback: CallbackQuery):
     """Скасувати дію"""
-    await callback.message.edit_text("❌ Дію скасовано")
+    # Перевіряємо чи є фото в попередньому повідомленні
+    has_photo = callback.message.photo is not None and len(callback.message.photo) > 0
+    
+    if has_photo:
+        # Якщо попереднє повідомлення містило фото, видаляємо його і відправляємо нове
+        await callback.message.delete()
+        await callback.message.answer("❌ Дію скасовано")
+    else:
+        # Якщо попереднє повідомлення було текстовим, редагуємо його
+        await callback.message.edit_text("❌ Дію скасовано")
+    
     await callback.answer()
 
 

@@ -7,12 +7,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Отримуємо DATABASE_URL і конвертуємо для asyncpg
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/gameclub")
+# Режим налагодження (True = локальна БД, False = серверна БД)
+DEBUG_MODE = os.getenv("DEBUG_MODE", "TRUE").upper() == "TRUE"
 
-# Якщо URL починається з postgresql:// (без asyncpg), додаємо asyncpg
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+# Отримуємо DATABASE_URL залежно від режиму налагодження
+if DEBUG_MODE:
+    # Режим налагодження - локальна SQLite база
+    DATABASE_URL = os.getenv("LOCAL_DATABASE_URL", "sqlite+aiosqlite:///./data/gameclub_local.db")
+else:
+    # Продакшн - PostgreSQL
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/gameclub")
+    
+    # Якщо URL починається з postgresql:// (без asyncpg), додаємо asyncpg
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Створюємо асинхронний движок
 engine = create_async_engine(

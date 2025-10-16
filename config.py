@@ -20,12 +20,20 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(id.strip()) for id in ADMIN_IDS_STR.split(",") if id.strip()]
 
-# База даних
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/gameclub")
+# Режим налагодження (True = локальна БД, False = серверна БД)
+DEBUG_MODE = os.getenv("DEBUG_MODE", "TRUE").upper() == "TRUE"
 
-# Якщо URL починається з postgresql:// (без asyncpg), додаємо asyncpg
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+# База даних - залежить від режиму налагодження
+if DEBUG_MODE:
+    # Режим налагодження - локальна SQLite база
+    DATABASE_URL = os.getenv("LOCAL_DATABASE_URL", "sqlite+aiosqlite:///./data/gameclub_local.db")
+else:
+    # Продакшн - PostgreSQL
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/gameclub")
+    
+    # Якщо URL починається з postgresql:// (без asyncpg), додаємо asyncpg
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Інформація про клуб
 CLUB_NAME = os.getenv("CLUB_NAME", "Герої на полицях")
@@ -40,7 +48,7 @@ PAYMENT_BANK_LINK = os.getenv("PAYMENT_BANK_LINK", "")
 # Функція для динамічного оновлення конфігурації
 def reload_config():
     """Перезавантажити конфігурацію з .env файлу"""
-    global CLUB_NAME, CLUB_DESCRIPTION, CLUB_ABOUT_TEXT, PAYMENT_INFO, PAYMENT_CARD_NUMBER, PAYMENT_BANK_LINK
+    global CLUB_NAME, CLUB_DESCRIPTION, CLUB_ABOUT_TEXT, PAYMENT_INFO, PAYMENT_CARD_NUMBER, PAYMENT_BANK_LINK, DEBUG_MODE, DATABASE_URL
     load_dotenv(override=True)
     CLUB_NAME = os.getenv("CLUB_NAME", "Герої на полицях")
     CLUB_DESCRIPTION = os.getenv("CLUB_DESCRIPTION", "Ігротека настільних ігор")
@@ -48,6 +56,15 @@ def reload_config():
     PAYMENT_INFO = os.getenv("PAYMENT_INFO", None)
     PAYMENT_CARD_NUMBER = os.getenv("PAYMENT_CARD_NUMBER", "")
     PAYMENT_BANK_LINK = os.getenv("PAYMENT_BANK_LINK", "")
+    
+    # Оновлюємо режим налагодження та базу даних
+    DEBUG_MODE = os.getenv("DEBUG_MODE", "TRUE").upper() == "TRUE"
+    if DEBUG_MODE:
+        DATABASE_URL = os.getenv("LOCAL_DATABASE_URL", "sqlite+aiosqlite:///./data/gameclub_local.db")
+    else:
+        DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/gameclub")
+        if DATABASE_URL.startswith("postgresql://"):
+            DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Валідація конфігурації
 def validate_config():
@@ -82,7 +99,14 @@ if __name__ == "__main__":
     # Для тестування конфігурації
     validate_config()
     print("✅ Конфігурація валідна")
+    print(f"🐛 DEBUG_MODE: {DEBUG_MODE}")
     print(f"📝 BOT_TOKEN: {'*' * 10}{BOT_TOKEN[-5:] if BOT_TOKEN else 'NOT SET'}")
     print(f"👥 ADMIN_IDS: {ADMIN_IDS}")
     print(f"🗄️  DATABASE_URL: {DATABASE_URL}")
     print(f"🏢 CLUB_NAME: {CLUB_NAME}")
+    
+    # Додаткова інформація про базу даних
+    if DEBUG_MODE:
+        print("🔧 Режим налагодження - використовується локальна SQLite")
+    else:
+        print("🚀 Продакшн режим - використовується PostgreSQL")
