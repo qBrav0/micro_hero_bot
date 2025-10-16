@@ -282,31 +282,32 @@ async def view_session_details(callback: CallbackQuery, skip_answer: bool = Fals
         # Перевіряємо чи це повідомлення з фото
         has_photo = callback.message.photo is not None and len(callback.message.photo) > 0
         
+        # Перевіряємо чи є зображення (Telegram file_id або локальний файл)
+        has_image = game.image_file_id or (game.image_path and __import__('os').path.exists(game.image_path))
+        
         # Відправляємо з фото якщо воно є
-        if game.image_path and not has_photo:
-            from aiogram.types import FSInputFile
-            import os
+        if has_image and not has_photo:
+            await callback.message.delete()
             
-            # Якщо файл існує і це перший показ - відправляємо нове повідомлення з фото
-            if os.path.exists(game.image_path):
-                await callback.message.delete()
-                photo = FSInputFile(game.image_path)
+            # Використовуємо file_id якщо є, інакше локальний файл
+            if game.image_file_id:
                 await callback.message.answer_photo(
-                    photo=photo,
+                    photo=game.image_file_id,
                     caption=text,
                     reply_markup=keyboard,
                     parse_mode="HTML"
                 )
-            else:
-                # Якщо файл не існує, просто редагуємо текст
-                try:
-                    await callback.message.edit_text(
-                        text,
+            elif game.image_path:
+                from aiogram.types import FSInputFile
+                import os
+                if os.path.exists(game.image_path):
+                    photo = FSInputFile(game.image_path)
+                    await callback.message.answer_photo(
+                        photo=photo,
+                        caption=text,
                         reply_markup=keyboard,
                         parse_mode="HTML"
                     )
-                except:
-                    pass
         elif has_photo:
             # Якщо вже є фото, оновлюємо caption
             try:
