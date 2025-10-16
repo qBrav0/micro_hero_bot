@@ -14,6 +14,10 @@ router = Router()
 @router.message(F.text == "📅 Розклад ігор")
 async def show_schedule(message: Message):
     """Показати розклад ігор"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"show_schedule: Відправляємо розклад, повідомлення ID: {message.message_id if hasattr(message, 'message_id') else 'N/A'}")
+    
     async for session in get_session():
         # Отримуємо майбутні сесії
         sessions = await ScheduleService.get_upcoming_schedule(session, days=7)
@@ -23,6 +27,7 @@ async def show_schedule(message: Message):
                 "📅 На найближчі 7 днів немає запланованих ігор.\n\n"
                 "Слідкуйте за оновленнями!"
             )
+            logger.info("show_schedule: Немає запланованих ігор")
             return
         
         # Групуємо по датах
@@ -47,13 +52,18 @@ async def show_schedule(message: Message):
         ])
         
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
+        logger.info("show_schedule: Розклад успішно відправлено")
 
 
 @router.callback_query(F.data.startswith("schedule_date_"))
 async def show_date_sessions(callback: CallbackQuery):
     """Показати ігри на обрану дату"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     date_str = callback.data.split("_")[-1]
     selected_date = date.fromisoformat(date_str)
+    logger.info(f"show_date_sessions: Обробляємо дату {date_str}, повідомлення ID: {callback.message.message_id}")
     
     async for session in get_session():
         # Отримуємо сесії на цю дату
@@ -63,6 +73,7 @@ async def show_date_sessions(callback: CallbackQuery):
         
         if not sessions:
             await callback.answer("На цю дату немає ігор", show_alert=True)
+            logger.info(f"show_date_sessions: Немає ігор на дату {date_str}")
             return
         
         # Отримуємо ціни на цей день
@@ -110,7 +121,18 @@ async def show_date_sessions(callback: CallbackQuery):
         
         # Якщо не знайшли активних сесій, показуємо відповідне повідомлення
         if not active_sessions_found:
-            await callback.answer("На цю дату немає активних ігор", show_alert=True)
+            text += "На цю дату немає активних ігор"
+            keyboard.append([{"text": "🔙 Назад до дат", "callback_data": "back_to_schedule"}])
+            
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=btn["text"], callback_data=btn["callback_data"])]
+                for row in keyboard for btn in row
+            ])
+            
+            await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            await callback.answer()
+            logger.info(f"show_date_sessions: Показано повідомлення про відсутність активних ігор для дати {date_str}")
             return
         
         keyboard.append([{"text": "🔙 Назад до дат", "callback_data": "back_to_schedule"}])
@@ -123,6 +145,7 @@ async def show_date_sessions(callback: CallbackQuery):
         
         await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
         await callback.answer()
+        logger.info(f"show_date_sessions: Успішно оновлено повідомлення для дати {date_str}")
 
 
 @router.callback_query(F.data.startswith("view_session_"))
@@ -624,9 +647,63 @@ async def show_players_list(callback: CallbackQuery):
 @router.callback_query(F.data == "back_to_schedule")
 async def back_to_schedule(callback: CallbackQuery):
     """Повернутися до розкладу"""
-    # Просто викликаємо показ розкладу
-    await callback.message.delete()
-    await show_schedule(callback.message)
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.info(f"back_to_schedule: Повертаємося до розкладу, повідомлення ID: {callback.message.message_id}")
+        
+        # Отримуємо розклад
+        async for session in get_session():
+            # Отримуємо майбутні сесії
+            sessions = await ScheduleService.get_upcoming_schedule(session, days=7)
+            
+            if not sessions:
+                text = "📅 На найближчі 7 днів немає запланованих ігор.\n\nСлідкуйте за оновленнями!"
+                keyboard = []
+            else:
+                # Групуємо по датах
+                grouped = await ScheduleService.group_sessions_by_date(sessions)
+                
+                text = "📅 <b>Розклад ігор на найближчі 7 днів:</b>\n\n"
+                text += "Оберіть дату, щоб переглянути ігри:"
+                
+                # Створюємо клавіатуру з датами
+                keyboard = []
+                for session_date, date_sessions in grouped.items():
+                    date_str = format_date(session_date)
+                    keyboard.append([{
+                        "text": f"📅 {date_str} ({len(date_sessions)} ігор)",
+                        "callback_data": f"schedule_date_{session_date.isoformat()}"
+                    }])
+            
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=btn["text"], callback_data=btn["callback_data"])]
+                for row in keyboard for btn in row
+            ])
+            
+            # Спробуємо редагувати повідомлення
+            try:
+                await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+                logger.info("back_to_schedule: Повідомлення успішно оновлено")
+            except Exception as edit_error:
+                logger.warning(f"back_to_schedule: Не вдалося редагувати повідомлення: {edit_error}")
+                # Якщо не вдалося редагувати, спробуємо видалити і відправити нове
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+                    logger.info("back_to_schedule: Повідомлення видалено і відправлено нове")
+                except Exception as delete_error:
+                    logger.error(f"back_to_schedule: Не вдалося видалити/відправити повідомлення: {delete_error}")
+                    await callback.answer("Помилка при завантаженні розкладу. Спробуйте ще раз.", show_alert=True)
+            
+            await callback.answer()
+            break
+            
+    except Exception as e:
+        logger.error(f"back_to_schedule: Критична помилка: {e}")
+        await callback.answer("Помилка при завантаженні розкладу. Спробуйте ще раз.", show_alert=True)
 
 
 @router.callback_query(F.data == "no_games")
