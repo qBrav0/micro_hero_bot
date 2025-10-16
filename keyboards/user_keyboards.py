@@ -6,6 +6,7 @@ def get_main_menu(is_admin: bool = False) -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text="📅 Розклад ігор")],
         [KeyboardButton(text="🎮 Мої записи")],
+        [KeyboardButton(text="🎲 База ігор")],
         [KeyboardButton(text="🔔 Налаштування сповіщень")],
         [KeyboardButton(text="🏆 Топ-10 ігротеки")],
         [KeyboardButton(text="ℹ️ Про ігротеку"), KeyboardButton(text="💳 Оплата")]

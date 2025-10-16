@@ -89,6 +89,12 @@ async def show_top_players(message: Message):
         await message.answer(text, parse_mode="HTML")
 
 
+@router.message(F.text == "🎲 База ігор")
+async def show_game_database(message: Message):
+    """Показати базу ігор (поки що в розробці)"""
+    await message.answer("Біп-буп, це ще в розробці 🛠️")
+
+
 @router.message(F.text == "💳 Оплата")
 async def show_payment_info(message: Message):
     """Показати інформацію про оплату"""
