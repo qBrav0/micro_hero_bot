@@ -28,6 +28,9 @@ async def run_migrations(engine: AsyncEngine):
             # Міграція 4: Додавання поля для сповіщень від адміністратора
             await migrate_add_admin_notifications_field(conn)
             
+            # Міграція 5: Додавання поля image_file_id для збереження Telegram file_id
+            await migrate_add_image_file_id_field(conn)
+            
             logger.info("✅ Всі міграції виконано успішно")
             
         except Exception as e:
@@ -313,5 +316,73 @@ async def migrate_add_admin_notifications_field(conn):
         
     except Exception as e:
         logger.error(f"❌ Помилка при додаванні поля admin_notifications_enabled: {e}")
+        raise
+
+
+async def migrate_add_image_file_id_field(conn):
+    """
+    Додає поле image_file_id до таблиці game для збереження Telegram file_id
+    """
+    try:
+        # Визначаємо тип БД
+        db_name = conn.engine.dialect.name
+        
+        # Перевіряємо чи існує таблиця game
+        if db_name == 'sqlite':
+            result = await conn.execute(text(
+                """
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='game';
+                """
+            ))
+        else:  # PostgreSQL
+            result = await conn.execute(text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'game'
+                );
+                """
+            ))
+        
+        table_exists = result.scalar()
+        
+        if not table_exists:
+            logger.info("ℹ️ Таблиця game ще не створена, міграція буде застосована при створенні")
+            return
+        
+        # Перевіряємо чи вже існує поле image_file_id
+        if db_name == 'sqlite':
+            result = await conn.execute(text(
+                "PRAGMA table_info(game);"
+            ))
+            columns = [row[1] for row in result.fetchall()]
+            column_exists = 'image_file_id' in columns
+        else:  # PostgreSQL
+            result = await conn.execute(text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'game' AND column_name = 'image_file_id'
+                );
+                """
+            ))
+            column_exists = result.scalar()
+        
+        if column_exists:
+            logger.info("ℹ️ Поле image_file_id вже існує")
+            return
+        
+        logger.info("🔄 Додавання поля image_file_id до таблиці game")
+        
+        # Додаємо поле
+        await conn.execute(text(
+            'ALTER TABLE game ADD COLUMN image_file_id VARCHAR;'
+        ))
+        
+        logger.info("✅ Поле image_file_id успішно додано")
+        
+    except Exception as e:
+        logger.error(f"❌ Помилка при додаванні поля image_file_id: {e}")
         raise
 
