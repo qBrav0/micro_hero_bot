@@ -123,20 +123,13 @@ async def show_date_sessions(callback: CallbackQuery):
             has_photo = callback.message.photo is not None
             
             if has_photo:
-                # Якщо є фото, оновлюємо caption
+                # Якщо є фото, завжди видаляємо і відправляємо нове текстове повідомлення
+                # (бо список ігор дня не повинен містити зображень)
                 try:
-                    await callback.message.edit_caption(
-                        caption=text,
-                        reply_markup=kb,
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    # Якщо не вдалося оновити caption, спробуємо видалити і відправити нове
-                    try:
-                        await callback.message.delete()
-                        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
-                    except Exception:
-                        pass
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+                except Exception:
+                    pass
             else:
                 # Якщо немає фото, редагуємо текст
                 try:
@@ -164,20 +157,13 @@ async def show_date_sessions(callback: CallbackQuery):
         has_photo = callback.message.photo is not None
         
         if has_photo:
-            # Якщо є фото, оновлюємо caption
+            # Якщо є фото, завжди видаляємо і відправляємо нове текстове повідомлення
+            # (бо список ігор дня не повинен містити зображень)
             try:
-                await callback.message.edit_caption(
-                    caption=text,
-                    reply_markup=kb,
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                # Якщо не вдалося оновити caption, спробуємо видалити і відправити нове
-                try:
-                    await callback.message.delete()
-                    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
-                except Exception:
-                    pass
+                await callback.message.delete()
+                await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
         else:
             # Якщо немає фото, редагуємо текст
             try:
@@ -732,12 +718,10 @@ async def back_to_schedule(callback: CallbackQuery):
             # Спробуємо редагувати повідомлення
             try:
                 if has_photo:
-                    # Якщо є фото, оновлюємо caption
-                    await callback.message.edit_caption(
-                        caption=text,
-                        reply_markup=kb,
-                        parse_mode="HTML"
-                    )
+                    # Якщо є фото, завжди видаляємо і відправляємо нове текстове повідомлення
+                    # (бо розклад не повинен містити зображень)
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
                 else:
                     # Якщо немає фото, редагуємо текст
                     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
