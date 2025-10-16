@@ -310,7 +310,23 @@ async def show_games_list_page(callback: CallbackQuery, page: int = 0):
         games = await GameService.get_all_active_games(session)
         
         if not games:
-            await callback.message.edit_text("📋 Список ігор порожній")
+            # Перевіряємо, чи повідомлення містить фото
+            has_photo = callback.message.photo is not None
+            
+            if has_photo:
+                # Якщо є фото, видаляємо і відправляємо нове текстове повідомлення
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer("📋 Список ігор порожній")
+                except Exception:
+                    pass
+            else:
+                # Якщо немає фото, редагуємо текст
+                try:
+                    await callback.message.edit_text("📋 Список ігор порожній")
+                except Exception:
+                    pass
+            
             await callback.answer()
             return
         
@@ -331,7 +347,29 @@ async def show_games_list_page(callback: CallbackQuery, page: int = 0):
         
         keyboard = get_games_list_keyboard(games, for_schedule=False, page=page)
         
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        # Перевіряємо, чи повідомлення містить фото
+        has_photo = callback.message.photo is not None
+        
+        if has_photo:
+            # Якщо є фото, завжди видаляємо і відправляємо нове текстове повідомлення
+            # (бо список ігор не повинен містити зображень)
+            try:
+                await callback.message.delete()
+                await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception:
+                pass
+        else:
+            # Якщо немає фото, редагуємо текст
+            try:
+                await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception as e:
+                # Якщо не вдалося редагувати текст, спробуємо видалити і відправити нове
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                except Exception:
+                    pass
+        
         await callback.answer()
 
 
@@ -341,7 +379,23 @@ async def show_schedule_games_list_page(callback: CallbackQuery, state: FSMConte
         games = await GameService.get_all_active_games(session)
         
         if not games:
-            await callback.message.edit_text("❌ Немає доступних ігор")
+            # Перевіряємо, чи повідомлення містить фото
+            has_photo = callback.message.photo is not None
+            
+            if has_photo:
+                # Якщо є фото, видаляємо і відправляємо нове текстове повідомлення
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer("❌ Немає доступних ігор")
+                except Exception:
+                    pass
+            else:
+                # Якщо немає фото, редагуємо текст
+                try:
+                    await callback.message.edit_text("❌ Немає доступних ігор")
+                except Exception:
+                    pass
+            
             await callback.answer()
             return
         
@@ -355,7 +409,29 @@ async def show_schedule_games_list_page(callback: CallbackQuery, state: FSMConte
         
         keyboard = get_games_list_keyboard(games, for_schedule=True, page=page)
         
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        # Перевіряємо, чи повідомлення містить фото
+        has_photo = callback.message.photo is not None
+        
+        if has_photo:
+            # Якщо є фото, завжди видаляємо і відправляємо нове текстове повідомлення
+            # (бо список ігор не повинен містити зображень)
+            try:
+                await callback.message.delete()
+                await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception:
+                pass
+        else:
+            # Якщо немає фото, редагуємо текст
+            try:
+                await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception as e:
+                # Якщо не вдалося редагувати текст, спробуємо видалити і відправити нове
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                except Exception:
+                    pass
+        
         await callback.answer()
 
 
