@@ -40,6 +40,12 @@ class ScheduleService:
         return await get_upcoming_sessions(session, days=days)
     
     @staticmethod
+    async def get_all_upcoming_schedule(session: AsyncSession) -> List[GameSession]:
+        """Отримати весь майбутній розклад (всі дні)"""
+        from datetime import date
+        return await get_game_sessions(session, from_date=date.today())
+    
+    @staticmethod
     async def get_sessions_by_period(
         session: AsyncSession,
         from_date: Optional[date] = None,

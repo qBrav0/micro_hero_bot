@@ -27,6 +27,69 @@ def get_schedule_keyboard(sessions_by_date: dict, current_date: Optional[date] =
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+def get_schedule_paginated_keyboard(sessions_by_date: dict, page: int = 0, items_per_page: int = 7) -> InlineKeyboardMarkup:
+    """Клавіатура для перегляду розкладу з пагінацією"""
+    from utils.helpers import format_date
+    
+    keyboard = []
+    
+    # Конвертуємо словник в список для пагінації
+    dates_list = list(sessions_by_date.items())
+    total_pages = (len(dates_list) + items_per_page - 1) // items_per_page
+    
+    # Обчислюємо індекси для поточної сторінки
+    start_idx = page * items_per_page
+    end_idx = start_idx + items_per_page
+    page_dates = dates_list[start_idx:end_idx]
+    
+    # Додаємо дати для поточної сторінки
+    for session_date, sessions in page_dates:
+        # Використовуємо format_date для отримання дня тижня
+        formatted_date = format_date(session_date)
+        # Скорочуємо для кнопки (залишаємо тільки день тижня і дату)
+        short_date = formatted_date.split(',')[0] + ', ' + session_date.strftime('%d.%m')
+        
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"📅 {short_date} ({len(sessions)} ігор)",
+                callback_data=f"schedule_date_{session_date.isoformat()}"
+            )
+        ])
+    
+    if not keyboard:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="❌ Немає доступних ігор",
+                callback_data="no_games"
+            )
+        ])
+    
+    # Додаємо кнопки пагінації
+    if total_pages > 1:
+        pagination_row = []
+        
+        if page > 0:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    text="◀️ Попередня",
+                    callback_data=f"schedule_page_{page-1}"
+                )
+            )
+        
+        if page < total_pages - 1:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    text="Наступна ▶️",
+                    callback_data=f"schedule_page_{page+1}"
+                )
+            )
+        
+        if pagination_row:
+            keyboard.append(pagination_row)
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
 def get_game_actions_keyboard(session_id: int, is_registered: bool, 
                               is_admin: bool = False, context: str = "schedule", 
                               date_str: str = None) -> InlineKeyboardMarkup:

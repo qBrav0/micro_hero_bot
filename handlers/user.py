@@ -13,14 +13,14 @@ router = Router()
 
 @router.message(F.text == "📅 Розклад ігор")
 async def show_schedule(message: Message):
-    """Показати розклад ігор"""
+    """Показати розклад ігор з пагінацією"""
     async for session in get_session():
-        # Отримуємо майбутні сесії
-        sessions = await ScheduleService.get_upcoming_schedule(session, days=7)
+        # Отримуємо всі майбутні сесії
+        sessions = await ScheduleService.get_all_upcoming_schedule(session)
         
         if not sessions:
             await message.answer(
-                "📅 На найближчі 7 днів немає запланованих ігор.\n\n"
+                "📅 На майбутні дні немає запланованих ігор.\n\n"
                 "Слідкуйте за оновленнями!"
             )
             return
@@ -28,23 +28,15 @@ async def show_schedule(message: Message):
         # Групуємо по датах
         grouped = await ScheduleService.group_sessions_by_date(sessions)
         
-        text = "📅 <b>Розклад ігор на найближчі 7 днів:</b>\n\n"
+        # Підраховуємо загальну кількість днів
+        total_days = len(grouped)
+        
+        text = f"📅 <b>Розклад ігор ({total_days} днів):</b>\n\n"
         text += "Оберіть дату, щоб переглянути ігри:"
         
-        # Створюємо клавіатуру з датами
-        keyboard = []
-        for session_date, date_sessions in grouped.items():
-            date_str = format_date(session_date)
-            keyboard.append([{
-                "text": f"📅 {date_str} ({len(date_sessions)} ігор)",
-                "callback_data": f"schedule_date_{session_date.isoformat()}"
-            }])
-        
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=btn["text"], callback_data=btn["callback_data"])]
-            for row in keyboard for btn in row
-        ])
+        # Використовуємо нову клавіатуру з пагінацією
+        from keyboards.inline_keyboards import get_schedule_paginated_keyboard
+        kb = get_schedule_paginated_keyboard(grouped, page=0)
         
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
@@ -159,6 +151,57 @@ async def show_date_sessions(callback: CallbackQuery):
         if has_photo:
             # Якщо є фото, завжди видаляємо і відправляємо нове текстове повідомлення
             # (бо список ігор дня не повинен містити зображень)
+            try:
+                await callback.message.delete()
+                await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+        else:
+            # Якщо немає фото, редагуємо текст
+            try:
+                await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            except Exception as e:
+                # Якщо не вдалося редагувати текст, спробуємо видалити і відправити нове
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+                except Exception:
+                    pass
+        
+        await callback.answer()
+
+
+@router.callback_query(F.data.startswith("schedule_page_"))
+async def show_schedule_page(callback: CallbackQuery):
+    """Показати сторінку розкладу"""
+    page = int(callback.data.split("_")[-1])
+    
+    async for session in get_session():
+        # Отримуємо всі майбутні сесії
+        sessions = await ScheduleService.get_all_upcoming_schedule(session)
+        
+        if not sessions:
+            await callback.answer("Немає запланованих ігор", show_alert=True)
+            return
+        
+        # Групуємо по датах
+        grouped = await ScheduleService.group_sessions_by_date(sessions)
+        
+        # Підраховуємо загальну кількість днів
+        total_days = len(grouped)
+        
+        text = f"📅 <b>Розклад ігор ({total_days} днів):</b>\n\n"
+        text += "Оберіть дату, щоб переглянути ігри:"
+        
+        # Використовуємо нову клавіатуру з пагінацією
+        from keyboards.inline_keyboards import get_schedule_paginated_keyboard
+        kb = get_schedule_paginated_keyboard(grouped, page=page)
+        
+        # Перевіряємо, чи повідомлення містить фото
+        has_photo = callback.message.photo is not None
+        
+        if has_photo:
+            # Якщо є фото, завжди видаляємо і відправляємо нове текстове повідомлення
             try:
                 await callback.message.delete()
                 await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
@@ -685,33 +728,25 @@ async def back_to_schedule(callback: CallbackQuery):
     try:
         # Отримуємо розклад
         async for session in get_session():
-            # Отримуємо майбутні сесії
-            sessions = await ScheduleService.get_upcoming_schedule(session, days=7)
+            # Отримуємо всі майбутні сесії
+            sessions = await ScheduleService.get_all_upcoming_schedule(session)
             
             if not sessions:
-                text = "📅 На найближчі 7 днів немає запланованих ігор.\n\nСлідкуйте за оновленнями!"
-                keyboard = []
+                text = "📅 На майбутні дні немає запланованих ігор.\n\nСлідкуйте за оновленнями!"
+                kb = None
             else:
                 # Групуємо по датах
                 grouped = await ScheduleService.group_sessions_by_date(sessions)
                 
-                text = "📅 <b>Розклад ігор на найближчі 7 днів:</b>\n\n"
+                # Підраховуємо загальну кількість днів
+                total_days = len(grouped)
+                
+                text = f"📅 <b>Розклад ігор ({total_days} днів):</b>\n\n"
                 text += "Оберіть дату, щоб переглянути ігри:"
                 
-                # Створюємо клавіатуру з датами
-                keyboard = []
-                for session_date, date_sessions in grouped.items():
-                    date_str = format_date(session_date)
-                    keyboard.append([{
-                        "text": f"📅 {date_str} ({len(date_sessions)} ігор)",
-                        "callback_data": f"schedule_date_{session_date.isoformat()}"
-                    }])
-            
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=btn["text"], callback_data=btn["callback_data"])]
-                for row in keyboard for btn in row
-            ])
+                # Використовуємо нову клавіатуру з пагінацією
+                from keyboards.inline_keyboards import get_schedule_paginated_keyboard
+                kb = get_schedule_paginated_keyboard(grouped, page=0)
             
             # Перевіряємо, чи повідомлення містить фото
             has_photo = callback.message.photo is not None
