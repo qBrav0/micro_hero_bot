@@ -25,10 +25,8 @@ async def show_schedule(message: Message):
             )
             return
         
-        # Підраховуємо загальну кількість днів
-        total_days = len(combined_schedule)
         
-        text = f"📅 <b>Розклад ігротеки ({total_days} днів):</b>\n\n"
+        text = f"📅 <b>Розклад ігротеки:</b>\n\n"
         text += "🎮 <b>Ігри</b> - ігрові сесії з настільних ігор\n"
         text += "🎪 <b>Події</b> - турніри, майстер-класи, спеціальні заходи\n\n"
         text += "Оберіть дату для перегляду:"
@@ -330,10 +328,8 @@ async def show_schedule_page(callback: CallbackQuery):
             await callback.answer("Немає запланованих ігор та подій", show_alert=True)
             return
         
-        # Підраховуємо загальну кількість днів
-        total_days = len(combined_schedule)
         
-        text = f"📅 <b>Розклад ігротеки ({total_days} днів):</b>\n\n"
+        text = f"📅 <b>Розклад ігротеки:</b>\n\n"
         text += "🎮 <b>Ігри</b> - ігрові сесії з настільних ігор\n"
         text += "🎪 <b>Події</b> - турніри, майстер-класи, спеціальні заходи\n\n"
         text += "Оберіть дату для перегляду:"
@@ -880,10 +876,8 @@ async def back_to_schedule(callback: CallbackQuery):
                 text = "📅 На майбутні дні немає запланованих ігор та подій.\n\nСлідкуйте за оновленнями!"
                 kb = None
             else:
-                # Підраховуємо загальну кількість днів
-                total_days = len(combined_schedule)
                 
-                text = f"📅 <b>Розклад ігротеки ({total_days} днів):</b>\n\n"
+                text = f"📅 <b>Розклад ігротеки:</b>\n\n"
                 text += "🎮 <b>Ігри</b> - ігрові сесії з настільних ігор\n"
                 text += "🎪 <b>Події</b> - турніри, майстер-класи, спеціальні заходи\n\n"
                 text += "Оберіть дату для перегляду:"
@@ -1138,10 +1132,8 @@ async def back_to_events(callback: CallbackQuery):
             await callback.answer("Немає запланованих ігор та подій", show_alert=True)
             return
         
-        # Підраховуємо загальну кількість днів
-        total_days = len(combined_schedule)
         
-        text = f"📅 <b>Розклад ігротеки ({total_days} днів):</b>\n\n"
+        text = f"📅 <b>Розклад ігротеки:</b>\n\n"
         text += "🎮 <b>Ігри</b> - ігрові сесії з настільних ігор\n"
         text += "🎪 <b>Події</b> - турніри, майстер-класи, спеціальні заходи\n\n"
         text += "Оберіть дату для перегляду:"
