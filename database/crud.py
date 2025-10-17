@@ -4,7 +4,7 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, or_
 
-from .models import User, Game, GameSession, Registration, DayPricing, ClubSettings
+from .models import User, Game, GameSession, Registration, DayPricing, ClubSettings, Event, EventRegistration
 
 
 # ===== USER CRUD =====
@@ -478,3 +478,243 @@ async def get_all_settings(session: AsyncSession) -> dict:
     result = await session.execute(select(ClubSettings))
     settings = result.scalars().all()
     return {s.setting_key: s.setting_value for s in settings}
+
+
+# ===== EVENT CRUD =====
+
+async def create_event(session: AsyncSession, title: str, description: str,
+                      min_participants: int, max_participants: int, date: date,
+                      start_time: str, end_time: str, payment_type: str,
+                      created_by: int, image_file_id: Optional[str] = None) -> Event:
+    """Створити нову подію"""
+    from datetime import time as dt_time
+    
+    # Конвертуємо строки у time об'єкти
+    start = dt_time.fromisoformat(start_time)
+    end = dt_time.fromisoformat(end_time)
+    
+    event = Event(
+        title=title,
+        description=description,
+        min_participants=min_participants,
+        max_participants=max_participants,
+        date=date,
+        start_time=start,
+        end_time=end,
+        payment_type=payment_type,
+        created_by=created_by,
+        image_file_id=image_file_id
+    )
+    session.add(event)
+    await session.commit()
+    await session.refresh(event)
+    return event
+
+
+async def get_event(session: AsyncSession, event_id: int, active_only: bool = True) -> Optional[Event]:
+    """Отримати подію за ID"""
+    query = select(Event).where(Event.id == event_id)
+    if active_only:
+        query = query.where(Event.is_active == True)
+    
+    result = await session.execute(query)
+    return result.scalar_one_or_none()
+
+
+async def get_all_events(session: AsyncSession, active_only: bool = True) -> List[Event]:
+    """Отримати всі події"""
+    query = select(Event)
+    if active_only:
+        query = query.where(Event.is_active == True)
+    query = query.order_by(Event.date, Event.start_time)
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_upcoming_events(session: AsyncSession, days: int = 7) -> List[Event]:
+    """Отримати майбутні події на найближчі N днів"""
+    from datetime import date, timedelta
+    today = date.today()
+    end_date = today + timedelta(days=days)
+    
+    query = select(Event).where(
+        Event.date >= today,
+        Event.date <= end_date,
+        Event.is_active == True
+    ).order_by(Event.date, Event.start_time)
+    
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_events_by_period(session: AsyncSession, from_date: Optional[date] = None,
+                              to_date: Optional[date] = None) -> List[Event]:
+    """Отримати події за період"""
+    query = select(Event).where(Event.is_active == True)
+    
+    if from_date:
+        query = query.where(Event.date >= from_date)
+    if to_date:
+        query = query.where(Event.date <= to_date)
+    
+    query = query.order_by(Event.date, Event.start_time)
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def update_event(session: AsyncSession, event: Event) -> Event:
+    """Оновити подію"""
+    session.add(event)
+    await session.commit()
+    await session.refresh(event)
+    return event
+
+
+async def delete_event(session: AsyncSession, event_id: int) -> bool:
+    """Видалити подію (м'яке видалення) та всі реєстрації"""
+    event = await get_event(session, event_id, active_only=False)
+    if event:
+        # Спочатку видаляємо всі реєстрації на цю подію
+        registrations_result = await session.execute(
+            select(EventRegistration).where(EventRegistration.event_id == event_id)
+        )
+        registrations = registrations_result.scalars().all()
+        
+        for registration in registrations:
+            await session.delete(registration)
+        
+        # Потім позначаємо подію як неактивну
+        event.is_active = False
+        await update_event(session, event)
+        return True
+    return False
+
+
+# ===== EVENT REGISTRATION CRUD =====
+
+async def create_event_registration(session: AsyncSession, user_id: int, 
+                                   event_id: int) -> EventRegistration:
+    """Створити реєстрацію на подію"""
+    registration = EventRegistration(
+        user_id=user_id,
+        event_id=event_id
+    )
+    session.add(registration)
+    await session.commit()
+    await session.refresh(registration)
+    return registration
+
+
+async def get_event_registrations(session: AsyncSession, event_id: int,
+                                 active_only: bool = True) -> List[EventRegistration]:
+    """Отримати реєстрації для події"""
+    query = select(EventRegistration).where(EventRegistration.event_id == event_id)
+    if active_only:
+        query = query.where(EventRegistration.is_active == True)
+    
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_user_event_registrations(session: AsyncSession, user_id: int,
+                                      active_only: bool = True) -> List[EventRegistration]:
+    """Отримати реєстрації користувача на події"""
+    query = select(EventRegistration).where(EventRegistration.user_id == user_id)
+    if active_only:
+        query = query.where(EventRegistration.is_active == True)
+    
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def cancel_event_registration(session: AsyncSession, user_id: int, 
+                                   event_id: int) -> bool:
+    """Скасувати реєстрацію на подію"""
+    result = await session.execute(
+        select(EventRegistration).where(
+            and_(
+                EventRegistration.user_id == user_id,
+                EventRegistration.event_id == event_id,
+                EventRegistration.is_active == True
+            )
+        )
+    )
+    registration = result.scalar_one_or_none()
+    
+    if registration:
+        registration.is_active = False
+        session.add(registration)
+        await session.commit()
+        return True
+    return False
+
+
+async def check_user_registered_for_event(session: AsyncSession, user_id: int, 
+                                         event_id: int) -> bool:
+    """Перевірити, чи зареєстрований користувач на подію"""
+    result = await session.execute(
+        select(EventRegistration).where(
+            and_(
+                EventRegistration.user_id == user_id,
+                EventRegistration.event_id == event_id,
+                EventRegistration.is_active == True
+            )
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def get_user_attended_events_count(session: AsyncSession, user_id: int) -> int:
+    """Отримати кількість подій які користувач відвідав (минулі події де він був записаний)"""
+    from datetime import date
+    from sqlalchemy import func
+    
+    today = date.today()
+    
+    # Підраховуємо кількість активних реєстрацій на минулі події
+    result = await session.execute(
+        select(func.count(EventRegistration.id))
+        .join(Event, EventRegistration.event_id == Event.id)
+        .where(
+            and_(
+                EventRegistration.user_id == user_id,
+                EventRegistration.is_active == True,
+                Event.date < today
+            )
+        )
+    )
+    
+    return result.scalar() or 0
+
+
+async def get_top_users_by_attended_events(session: AsyncSession, limit: int = 10):
+    """Отримати топ користувачів за кількістю відвіданих подій"""
+    from datetime import date
+    from sqlalchemy import func
+    
+    today = date.today()
+    
+    # Підраховуємо відвідані події для кожного користувача
+    result = await session.execute(
+        select(
+            User.id,
+            User.telegram_id,
+            User.username,
+            User.first_name,
+            User.last_name,
+            func.count(EventRegistration.id).label('events_count')
+        )
+        .join(EventRegistration, User.id == EventRegistration.user_id)
+        .join(Event, EventRegistration.event_id == Event.id)
+        .where(
+            and_(
+                EventRegistration.is_active == True,
+                Event.date < today
+            )
+        )
+        .group_by(User.id)
+        .order_by(func.count(EventRegistration.id).desc())
+        .limit(limit)
+    )
+    
+    return result.all()

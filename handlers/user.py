@@ -1,9 +1,9 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import date
 
 from database import get_session, get_user_by_telegram_id
-from services import ScheduleService, RegistrationService, NotificationService
+from services import RegistrationService, NotificationService, CombinedScheduleService
 from keyboards import get_game_actions_keyboard
 from utils.helpers import format_date, format_time, format_time_safe
 from database.crud import get_game, get_registrations
@@ -11,50 +11,47 @@ from database.crud import get_game, get_registrations
 router = Router()
 
 
-@router.message(F.text == "📅 Розклад ігор")
+@router.message(F.text == "📅 Розклад ігротеки")
 async def show_schedule(message: Message):
-    """Показати розклад ігор з пагінацією"""
+    """Показати розклад ігор та подій з пагінацією"""
     async for session in get_session():
-        # Отримуємо всі майбутні сесії
-        sessions = await ScheduleService.get_all_upcoming_schedule(session)
+        # Отримуємо об'єднаний розклад (ігри + події)
+        combined_schedule = await CombinedScheduleService.get_all_upcoming_schedule(session)
         
-        if not sessions:
+        if not combined_schedule:
             await message.answer(
-                "📅 На майбутні дні немає запланованих ігор.\n\n"
+                "📅 На майбутні дні немає запланованих ігор та подій.\n\n"
                 "Слідкуйте за оновленнями!"
             )
             return
         
-        # Групуємо по датах
-        grouped = await ScheduleService.group_sessions_by_date(sessions)
-        
         # Підраховуємо загальну кількість днів
-        total_days = len(grouped)
+        total_days = len(combined_schedule)
         
-        text = f"📅 <b>Розклад ігор ({total_days} днів):</b>\n\n"
-        text += "Оберіть дату, щоб переглянути ігри:"
+        text = f"📅 <b>Розклад ігротеки ({total_days} днів):</b>\n\n"
+        text += "🎮 <b>Ігри</b> - ігрові сесії з настільних ігор\n"
+        text += "🎪 <b>Події</b> - турніри, майстер-класи, спеціальні заходи\n\n"
+        text += "Оберіть дату для перегляду:"
         
         # Використовуємо нову клавіатуру з пагінацією
         from keyboards.inline_keyboards import get_schedule_paginated_keyboard
-        kb = get_schedule_paginated_keyboard(grouped, page=0)
+        kb = get_schedule_paginated_keyboard(combined_schedule, page=0)
         
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("schedule_date_"))
 async def show_date_sessions(callback: CallbackQuery):
-    """Показати ігри на обрану дату"""
+    """Показати ігри та події на обрану дату"""
     date_str = callback.data.split("_")[-1]
     selected_date = date.fromisoformat(date_str)
     
     async for session in get_session():
-        # Отримуємо сесії на цю дату
-        sessions = await ScheduleService.get_sessions_by_period(
-            session, from_date=selected_date, to_date=selected_date
-        )
+        # Отримуємо об'єднаний розклад на цю дату
+        items = await CombinedScheduleService.get_schedule_for_date(session, selected_date)
         
-        if not sessions:
-            await callback.answer("На цю дату немає ігор", show_alert=True)
+        if not items:
+            await callback.answer("На цю дату немає ігор та подій", show_alert=True)
             return
         
         # Отримуємо ціни на цей день
@@ -69,40 +66,67 @@ async def show_date_sessions(callback: CallbackQuery):
             text += f"   • Дорослі: {day_pricing.adult_price} грн\n"
             text += f"   • Діти до 18: {day_pricing.child_price} грн\n\n"
         
-        text += "<b>Ігрові сесії:</b>\n"
-        
-        # Створюємо клавіатуру з іграми
+        # Створюємо клавіатуру з іграми та подіями
         keyboard = []
-        active_sessions_found = False
+        active_items_found = False
         
-        for game_session in sessions:
-            game = await get_game(session, game_session.game_id)
-            if not game or not game.is_active:
-                continue
-            
-            active_sessions_found = True
-            registrations = await get_registrations(session, game_session.id, active_only=True)
-            players_count = len(registrations)
-            
-            # Додаємо іконку типу оплати
-            payment_icon = {
-                "included": "✅",
-                "free": "🎁",
-                "donate": "💝"
-            }
-            
-            game_info = f"{payment_icon.get(game_session.payment_type, '✅')} {game.name} • {format_time(game_session.start_time)}"
-            game_info += f" • {players_count}/{game.max_players}"
-            
-            # Додаємо контекст дати в callback
-            keyboard.append([{
-                "text": game_info,
-                "callback_data": f"view_session_{game_session.id}_date_{date_str}"
-            }])
+        # Сортуємо елементи по часу
+        sorted_items = sorted(items, key=lambda x: x.start_time)
         
-        # Якщо не знайшли активних сесій, показуємо відповідне повідомлення
-        if not active_sessions_found:
-            text += "На цю дату немає активних ігор"
+        for item in sorted_items:
+            if CombinedScheduleService.is_game_session(item):
+                # Це ігрова сесія
+                game = await get_game(session, item.game_id)
+                if not game or not game.is_active:
+                    continue
+                
+                active_items_found = True
+                registrations = await get_registrations(session, item.id, active_only=True)
+                players_count = len(registrations)
+                
+                # Додаємо іконку типу оплати
+                payment_icon = {
+                    "included": "✅",
+                    "free": "🎁",
+                    "donate": "💝"
+                }
+                
+                game_info = f"{payment_icon.get(item.payment_type, '✅')} 🎮 {game.name} • {format_time(item.start_time)}"
+                game_info += f" • {players_count}/{game.max_players}"
+                
+                # Додаємо контекст дати в callback
+                keyboard.append([{
+                    "text": game_info,
+                    "callback_data": f"view_session_{item.id}_date_{date_str}"
+                }])
+            
+            elif CombinedScheduleService.is_event(item):
+                # Це подія
+                from database.crud import get_event_registrations
+                registrations = await get_event_registrations(session, item.id, active_only=True)
+                participants_count = len(registrations)
+                
+                active_items_found = True
+                
+                # Додаємо іконку типу оплати
+                payment_icon = {
+                    "included": "✅",
+                    "free": "🎁",
+                    "donate": "💝"
+                }
+                
+                event_info = f"{payment_icon.get(item.payment_type, '✅')} 🎪 {item.title} • {format_time(item.start_time)}"
+                event_info += f" • {participants_count}/{item.max_participants}"
+                
+                # Додаємо контекст дати в callback
+                keyboard.append([{
+                    "text": event_info,
+                    "callback_data": f"view_event_{item.id}_date_{date_str}"
+                }])
+        
+        # Якщо не знайшли активних елементів, показуємо відповідне повідомлення
+        if not active_items_found:
+            text += "На цю дату немає запланованих ігор та подій"
             keyboard.append([{"text": "🔙 Назад до дат", "callback_data": "back_to_schedule"}])
             
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -116,7 +140,6 @@ async def show_date_sessions(callback: CallbackQuery):
             
             if has_photo:
                 # Якщо є фото, завжди видаляємо і відправляємо нове текстове повідомлення
-                # (бо список ігор дня не повинен містити зображень)
                 try:
                     await callback.message.delete()
                     await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
@@ -171,31 +194,153 @@ async def show_date_sessions(callback: CallbackQuery):
         await callback.answer()
 
 
+@router.callback_query(F.data.startswith("view_event_"))
+async def view_event_details(callback: CallbackQuery):
+    """Показати деталі події"""
+    # Парсимо callback_data: view_event_{event_id}_date_{date_str}
+    parts = callback.data.split("_")
+    event_id = int(parts[2])
+    
+    user_telegram_id = callback.from_user.id
+    
+    async for db_session in get_session():
+        from database import get_user_by_telegram_id
+        from services import EventService
+        from database.crud import check_user_registered_for_event, get_event_registrations
+        
+        # Отримуємо користувача
+        user = await get_user_by_telegram_id(db_session, user_telegram_id)
+        if not user:
+            await callback.answer("❌ Помилка: користувача не знайдено", show_alert=True)
+            return
+        
+        # Отримуємо подію
+        event = await EventService.get_event_by_id(db_session, event_id)
+        if not event:
+            await callback.answer("❌ Подію не знайдено", show_alert=True)
+            return
+        
+        # Отримуємо реєстрації
+        registrations = await get_event_registrations(db_session, event_id, active_only=True)
+        participants_count = len(registrations)
+        
+        # Перевіряємо, чи зареєстрований користувач
+        is_registered = await check_user_registered_for_event(db_session, user.id, event_id)
+        
+        # Формуємо текст
+        text = f"🎪 <b>{event.title}</b>\n\n"
+        text += f"📅 <b>Дата:</b> {format_date(event.date)}\n"
+        text += f"⏰ <b>Час:</b> {format_time(event.start_time)} - {format_time(event.end_time)}\n"
+        text += f"👥 <b>Учасників:</b> {participants_count}/{event.max_participants}\n\n"
+        
+        # Додаємо тип оплати
+        payment_type_text = {
+            "included": "✅ Входить в оплату за вхід",
+            "free": "🎁 Безкоштовна",
+            "donate": "💝 Free donate"
+        }
+        text += f"💳 <b>Оплата:</b> {payment_type_text.get(event.payment_type, 'Входить в оплату')}\n\n"
+        
+        # Додаємо опис
+        text += f"📝 <b>Опис:</b>\n{event.description}\n\n"
+        
+        # Додаємо статус реєстрації
+        if is_registered:
+            text += "✅ <b>Ви зареєстровані на цю подію</b>"
+        else:
+            if participants_count >= event.max_participants:
+                text += "❌ <b>Місця закінчилися</b>"
+            else:
+                text += "📝 <b>Ви можете зареєструватися на цю подію</b>"
+        
+        # Створюємо клавіатуру
+        from keyboards import get_event_actions_keyboard
+        keyboard = get_event_actions_keyboard(event_id, is_registered=is_registered)
+        
+        # Перевіряємо чи є фото події
+        has_image = event.image_file_id
+        
+        if has_image:
+            # Перевіряємо, чи поточне повідомлення містить фото
+            has_photo = callback.message.photo is not None
+            
+            if has_photo:
+                # Якщо вже є фото, оновлюємо caption
+                try:
+                    await callback.message.edit_caption(
+                        caption=text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    # Якщо не вдалося оновити caption, видаляємо і відправляємо нове
+                    try:
+                        await callback.message.delete()
+                        await callback.message.answer_photo(
+                            photo=event.image_file_id,
+                            caption=text,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
+            else:
+                # Якщо немає фото, видаляємо поточне повідомлення і відправляємо нове фото з підписом
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer_photo(
+                        photo=event.image_file_id,
+                        caption=text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    # Якщо не вдалося відправити фото, відправляємо тільки текст
+                    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            # Якщо немає фото події, перевіряємо чи поточне повідомлення містить фото
+            has_photo = callback.message.photo is not None
+            
+            if has_photo:
+                # Якщо є фото, але події немає фото, видаляємо і відправляємо текст
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                except Exception:
+                    pass
+            else:
+                # Відправляємо тільки текст
+                await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        
+        await callback.answer()
+
+
+
+
 @router.callback_query(F.data.startswith("schedule_page_"))
 async def show_schedule_page(callback: CallbackQuery):
     """Показати сторінку розкладу"""
     page = int(callback.data.split("_")[-1])
     
     async for session in get_session():
-        # Отримуємо всі майбутні сесії
-        sessions = await ScheduleService.get_all_upcoming_schedule(session)
+        # Отримуємо об'єднаний розклад (ігри + події)
+        combined_schedule = await CombinedScheduleService.get_all_upcoming_schedule(session)
         
-        if not sessions:
-            await callback.answer("Немає запланованих ігор", show_alert=True)
+        if not combined_schedule:
+            await callback.answer("Немає запланованих ігор та подій", show_alert=True)
             return
         
-        # Групуємо по датах
-        grouped = await ScheduleService.group_sessions_by_date(sessions)
-        
         # Підраховуємо загальну кількість днів
-        total_days = len(grouped)
+        total_days = len(combined_schedule)
         
-        text = f"📅 <b>Розклад ігор ({total_days} днів):</b>\n\n"
-        text += "Оберіть дату, щоб переглянути ігри:"
+        text = f"📅 <b>Розклад ігротеки ({total_days} днів):</b>\n\n"
+        text += "🎮 <b>Ігри</b> - ігрові сесії з настільних ігор\n"
+        text += "🎪 <b>Події</b> - турніри, майстер-класи, спеціальні заходи\n\n"
+        text += "Оберіть дату для перегляду:"
         
         # Використовуємо нову клавіатуру з пагінацією
         from keyboards.inline_keyboards import get_schedule_paginated_keyboard
-        kb = get_schedule_paginated_keyboard(grouped, page=page)
+        kb = get_schedule_paginated_keyboard(combined_schedule, page=page)
         
         # Перевіряємо, чи повідомлення містить фото
         has_photo = callback.message.photo is not None
@@ -728,25 +873,24 @@ async def back_to_schedule(callback: CallbackQuery):
     try:
         # Отримуємо розклад
         async for session in get_session():
-            # Отримуємо всі майбутні сесії
-            sessions = await ScheduleService.get_all_upcoming_schedule(session)
+            # Отримуємо об'єднаний розклад (ігри + події)
+            combined_schedule = await CombinedScheduleService.get_all_upcoming_schedule(session)
             
-            if not sessions:
-                text = "📅 На майбутні дні немає запланованих ігор.\n\nСлідкуйте за оновленнями!"
+            if not combined_schedule:
+                text = "📅 На майбутні дні немає запланованих ігор та подій.\n\nСлідкуйте за оновленнями!"
                 kb = None
             else:
-                # Групуємо по датах
-                grouped = await ScheduleService.group_sessions_by_date(sessions)
-                
                 # Підраховуємо загальну кількість днів
-                total_days = len(grouped)
+                total_days = len(combined_schedule)
                 
-                text = f"📅 <b>Розклад ігор ({total_days} днів):</b>\n\n"
-                text += "Оберіть дату, щоб переглянути ігри:"
+                text = f"📅 <b>Розклад ігротеки ({total_days} днів):</b>\n\n"
+                text += "🎮 <b>Ігри</b> - ігрові сесії з настільних ігор\n"
+                text += "🎪 <b>Події</b> - турніри, майстер-класи, спеціальні заходи\n\n"
+                text += "Оберіть дату для перегляду:"
                 
                 # Використовуємо нову клавіатуру з пагінацією
                 from keyboards.inline_keyboards import get_schedule_paginated_keyboard
-                kb = get_schedule_paginated_keyboard(grouped, page=0)
+                kb = get_schedule_paginated_keyboard(combined_schedule, page=0)
             
             # Перевіряємо, чи повідомлення містить фото
             has_photo = callback.message.photo is not None
@@ -817,3 +961,253 @@ async def back_to_my_registrations(callback: CallbackQuery):
     
     await show_my_registrations(new_message)
     await callback.answer()
+
+
+# ===== ОБРОБНИКИ ПОДІЙ =====
+
+@router.callback_query(F.data.startswith("event_register_"))
+async def register_for_event_from_schedule(callback: CallbackQuery):
+    """Зареєструватися на подію з розкладу"""
+    event_id = int(callback.data.split("_")[-1])
+    user_telegram_id = callback.from_user.id
+    
+    async for session in get_session():
+        from database import get_user_by_telegram_id
+        from services import EventService
+        from database.crud import check_user_registered_for_event
+        
+        # Отримуємо користувача
+        user = await get_user_by_telegram_id(session, user_telegram_id)
+        if not user:
+            await callback.answer("❌ Помилка: користувача не знайдено", show_alert=True)
+            return
+        
+        # Перевіряємо чи вже зареєстрований
+        if await check_user_registered_for_event(session, user.id, event_id):
+            await callback.answer("⚠️ Ви вже зареєстровані на цю подію", show_alert=True)
+            return
+        
+        # Реєструємо користувача
+        success = await EventService.register_user_for_event(session, user.id, event_id)
+        
+        if success:
+            event = await EventService.get_event_by_id(session, event_id)
+            await callback.answer(f"✅ Ви успішно зареєстровані на подію '{event.title}'!")
+            
+            # Відправляємо сповіщення адміністраторам
+            bot = callback.bot
+            from services import NotificationService
+            await NotificationService.notify_admins_new_event_registration(
+                bot, session, event, user
+            )
+            
+            # Оновлюємо відображення події з новими кнопками
+            await view_event_details(callback)
+        else:
+            await callback.answer("❌ Не вдалося зареєструватися. Можливо, місця закінчилися.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("event_cancel_"))
+async def cancel_event_registration_from_schedule(callback: CallbackQuery):
+    """Скасувати реєстрацію на подію з розкладу"""
+    event_id = int(callback.data.split("_")[-1])
+    user_telegram_id = callback.from_user.id
+    
+    async for session in get_session():
+        from database import get_user_by_telegram_id
+        from services import EventService
+        
+        # Отримуємо користувача
+        user = await get_user_by_telegram_id(session, user_telegram_id)
+        if not user:
+            await callback.answer("❌ Помилка: користувача не знайдено", show_alert=True)
+            return
+        
+        # Отримуємо подію перед скасуванням для сповіщення
+        event = await EventService.get_event_by_id(session, event_id)
+        
+        # Скасовуємо реєстрацію
+        success = await EventService.cancel_user_registration(session, user.id, event_id)
+        
+        if success:
+            await callback.answer(f"❌ Реєстрацію на подію '{event.title}' скасовано")
+            
+            # Відправляємо сповіщення адміністраторам
+            bot = callback.bot
+            from services import NotificationService
+            await NotificationService.notify_admins_event_cancellation(
+                bot, session, event, user
+            )
+            
+            # Оновлюємо відображення події з новими кнопками
+            await view_event_details(callback)
+        else:
+            await callback.answer("❌ Не вдалося скасувати реєстрацію", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("event_participants_list_"))
+async def show_event_participants_list_from_schedule(callback: CallbackQuery):
+    """Показати список учасників події з розкладу"""
+    event_id = int(callback.data.split("_")[-1])
+    
+    async for db_session in get_session():
+        # Отримуємо подію
+        from sqlmodel import select
+        from database.models import Event, User
+        
+        result = await db_session.execute(
+            select(Event).where(Event.id == event_id)
+        )
+        event = result.scalar_one_or_none()
+        
+        if not event:
+            await callback.answer("Подію не знайдено", show_alert=True)
+            return
+        
+        # Отримуємо реєстрації
+        from database.crud import get_event_registrations
+        registrations = await get_event_registrations(db_session, event_id, active_only=True)
+        
+        text = f"👥 <b>Список учасників</b>\n\n"
+        text += f"🎪 Подія: <b>{event.title}</b>\n"
+        text += f"📅 Дата: {format_date(event.date)}\n"
+        text += f"⏰ Час: {format_time(event.start_time)} - {format_time(event.end_time)}\n\n"
+        
+        if not registrations:
+            text += "Поки що ніхто не зареєстрований на цю подію."
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"view_event_{event_id}")]
+            ])
+        else:
+            text += f"<b>Зареєстровано: {len(registrations)}/{event.max_participants}</b>\n\n"
+            
+            # Отримуємо інформацію про кожного учасника
+            for i, reg in enumerate(registrations, 1):
+                result = await db_session.execute(
+                    select(User).where(User.id == reg.user_id)
+                )
+                participant = result.scalar_one_or_none()
+                
+                if participant:
+                    participant_name = participant.first_name
+                    if participant.last_name:
+                        participant_name += f" {participant.last_name}"
+                    
+                    if participant.username:
+                        text += f"{i}. @{participant.username} ({participant_name})\n"
+                    else:
+                        text += f"{i}. {participant_name}\n"
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"view_event_{event_id}")]
+            ])
+        
+        # Перевіряємо чи є фото в повідомленні
+        has_photo = callback.message.photo is not None
+        
+        if has_photo:
+            # Якщо є фото, видаляємо і відправляємо нове текстове повідомлення
+            try:
+                await callback.message.delete()
+                await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception:
+                pass
+        else:
+            # Якщо немає фото, редагуємо текст
+            try:
+                await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception:
+                # Якщо не вдалося редагувати, видаляємо і відправляємо нове
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                except Exception:
+                    pass
+        
+        await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_events")
+async def back_to_events(callback: CallbackQuery):
+    """Повернутися до розкладу ігротеки"""
+    async for session in get_session():
+        # Отримуємо об'єднаний розклад (ігри + події)
+        combined_schedule = await CombinedScheduleService.get_all_upcoming_schedule(session)
+        
+        if not combined_schedule:
+            await callback.answer("Немає запланованих ігор та подій", show_alert=True)
+            return
+        
+        # Підраховуємо загальну кількість днів
+        total_days = len(combined_schedule)
+        
+        text = f"📅 <b>Розклад ігротеки ({total_days} днів):</b>\n\n"
+        text += "🎮 <b>Ігри</b> - ігрові сесії з настільних ігор\n"
+        text += "🎪 <b>Події</b> - турніри, майстер-класи, спеціальні заходи\n\n"
+        text += "Оберіть дату для перегляду:"
+        
+        # Використовуємо нову клавіатуру з пагінацією
+        from keyboards.inline_keyboards import get_schedule_paginated_keyboard
+        kb = get_schedule_paginated_keyboard(combined_schedule, page=0)
+        
+        # Перевіряємо, чи поточне повідомлення містить фото
+        has_photo = callback.message.photo is not None
+        
+        if has_photo:
+            # Якщо є фото, видаляємо і відправляємо нове текстове повідомлення
+            try:
+                await callback.message.delete()
+                await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                pass
+        else:
+            # Якщо немає фото, редагуємо текст
+            try:
+                await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                # Якщо не вдалося редагувати текст, спробуємо видалити і відправити нове
+                try:
+                    await callback.message.delete()
+                    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+                except Exception:
+                    pass
+        
+        await callback.answer()
+
+
+
+
+@router.message(F.text == "📋 Мої події")
+async def show_my_events(message: Message):
+    """Показати події користувача"""
+    user_telegram_id = message.from_user.id
+    
+    async for session in get_session():
+        from database import get_user_by_telegram_id
+        from services import EventService
+        
+        # Отримуємо користувача
+        user = await get_user_by_telegram_id(session, user_telegram_id)
+        if not user:
+            await message.answer("❌ Помилка: користувача не знайдено")
+            return
+        
+        # Отримуємо реєстрації користувача
+        registrations = await EventService.get_user_registrations(session, user.id)
+        
+        if not registrations:
+            await message.answer("📋 У вас немає активних реєстрацій на події.")
+            return
+        
+        text = "📋 <b>Ваші події:</b>\n\n"
+        
+        for reg in registrations:
+            event = await EventService.get_event_by_id(session, reg.event_id)
+            if event:
+                text += f"🎪 <b>{event.title}</b>\n"
+                text += f"📅 {format_date(event.date)} | ⏰ {format_time(event.start_time)} - {format_time(event.end_time)}\n\n"
+        
+        from keyboards import get_my_event_registrations_keyboard
+        keyboard = get_my_event_registrations_keyboard(registrations)
+        
+        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")

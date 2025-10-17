@@ -3,11 +3,15 @@ from .schedule_service import ScheduleService
 from .registration_service import RegistrationService
 from .notification_service import NotificationService
 from .reminder_service import ReminderService
+from .event_service import EventService
+from .combined_schedule_service import CombinedScheduleService
 
 __all__ = [
     "GameService",
     "ScheduleService", 
     "RegistrationService",
     "NotificationService",
-    "ReminderService"
+    "ReminderService",
+    "EventService",
+    "CombinedScheduleService"
 ]

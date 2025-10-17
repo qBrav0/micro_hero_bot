@@ -31,6 +31,9 @@ async def run_migrations(engine: AsyncEngine):
             # Міграція 5: Додавання поля image_file_id для збереження Telegram file_id
             await migrate_add_image_file_id_field(conn)
             
+            # Міграція 6: Створення таблиць для подій
+            await migrate_create_events_tables(conn)
+            
             logger.info("✅ Всі міграції виконано успішно")
             
         except Exception as e:
@@ -384,5 +387,156 @@ async def migrate_add_image_file_id_field(conn):
         
     except Exception as e:
         logger.error(f"❌ Помилка при додаванні поля image_file_id: {e}")
+        raise
+
+
+async def migrate_create_events_tables(conn):
+    """
+    Створює таблиці event та eventregistration для системи подій
+    """
+    try:
+        # Визначаємо тип БД
+        db_name = conn.engine.dialect.name
+        
+        # Перевіряємо чи існує таблиця event
+        if db_name == 'sqlite':
+            result = await conn.execute(text(
+                """
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='event';
+                """
+            ))
+        else:  # PostgreSQL
+            result = await conn.execute(text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'event'
+                );
+                """
+            ))
+        
+        table_exists = result.scalar()
+        
+        if not table_exists:
+            logger.info("🔄 Створення таблиці event")
+            
+            # Створюємо таблицю event
+            if db_name == 'sqlite':
+                await conn.execute(text(
+                    """
+                    CREATE TABLE event (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title VARCHAR NOT NULL,
+                        description VARCHAR NOT NULL,
+                        min_participants INTEGER NOT NULL,
+                        max_participants INTEGER NOT NULL,
+                        date DATE NOT NULL,
+                        start_time TIME NOT NULL,
+                        end_time TIME NOT NULL,
+                        payment_type VARCHAR DEFAULT 'included',
+                        image_file_id VARCHAR,
+                        is_active BOOLEAN DEFAULT 1,
+                        created_by INTEGER NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (created_by) REFERENCES user (id)
+                    );
+                    """
+                ))
+                
+                # Створюємо індекс для title
+                await conn.execute(text(
+                    "CREATE INDEX ix_event_title ON event (title);"
+                ))
+            else:  # PostgreSQL
+                await conn.execute(text(
+                    """
+                    CREATE TABLE event (
+                        id SERIAL PRIMARY KEY,
+                        title VARCHAR NOT NULL,
+                        description VARCHAR NOT NULL,
+                        min_participants INTEGER NOT NULL,
+                        max_participants INTEGER NOT NULL,
+                        date DATE NOT NULL,
+                        start_time TIME NOT NULL,
+                        end_time TIME NOT NULL,
+                        payment_type VARCHAR DEFAULT 'included',
+                        image_file_id VARCHAR,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        created_by INTEGER NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (created_by) REFERENCES "user" (id)
+                    );
+                    """
+                ))
+                
+                # Створюємо індекс для title
+                await conn.execute(text(
+                    "CREATE INDEX ix_event_title ON event (title);"
+                ))
+            
+            logger.info("✅ Таблиця event успішно створена")
+        else:
+            logger.info("ℹ️ Таблиця event вже існує")
+        
+        # Перевіряємо чи існує таблиця eventregistration
+        if db_name == 'sqlite':
+            result = await conn.execute(text(
+                """
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='eventregistration';
+                """
+            ))
+        else:  # PostgreSQL
+            result = await conn.execute(text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'eventregistration'
+                );
+                """
+            ))
+        
+        table_exists = result.scalar()
+        
+        if not table_exists:
+            logger.info("🔄 Створення таблиці eventregistration")
+            
+            # Створюємо таблицю eventregistration
+            if db_name == 'sqlite':
+                await conn.execute(text(
+                    """
+                    CREATE TABLE eventregistration (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        event_id INTEGER NOT NULL,
+                        registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        is_active BOOLEAN DEFAULT 1,
+                        FOREIGN KEY (user_id) REFERENCES user (id),
+                        FOREIGN KEY (event_id) REFERENCES event (id)
+                    );
+                    """
+                ))
+            else:  # PostgreSQL
+                await conn.execute(text(
+                    """
+                    CREATE TABLE eventregistration (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        event_id INTEGER NOT NULL,
+                        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        FOREIGN KEY (user_id) REFERENCES "user" (id),
+                        FOREIGN KEY (event_id) REFERENCES event (id)
+                    );
+                    """
+                ))
+            
+            logger.info("✅ Таблиця eventregistration успішно створена")
+        else:
+            logger.info("ℹ️ Таблиця eventregistration вже існує")
+        
+    except Exception as e:
+        logger.error(f"❌ Помилка при створенні таблиць подій: {e}")
         raise
 

@@ -52,28 +52,85 @@ async def about_club(message: Message):
 
 @router.message(F.text == "🏆 Топ-10 ігротеки")
 async def show_top_players(message: Message):
-    """Показати топ-10 гравців за кількістю відвіданих сесій"""
-    from database import get_session, get_top_users_by_attended_sessions
+    """Показати топ-10 гравців за кількістю відвіданих сесій та подій"""
+    from database import get_session
+    from sqlalchemy import select, func
+    from database.models import User, Registration, GameSession, EventRegistration, Event
+    from datetime import date
     
     async for session in get_session():
-        top_users = await get_top_users_by_attended_sessions(session, limit=10)
+        today = date.today()
+        
+        # Отримуємо комбіновану статистику (ігри + події)
+        result = await session.execute(
+            select(
+                User.id,
+                User.telegram_id,
+                User.username,
+                User.first_name,
+                User.last_name,
+                func.coalesce(
+                    func.sum(
+                        func.case(
+                            (GameSession.date < today, 1),
+                            else_=0
+                        )
+                    ), 0
+                ).label('game_sessions_count'),
+                func.coalesce(
+                    func.sum(
+                        func.case(
+                            (Event.date < today, 1),
+                            else_=0
+                        )
+                    ), 0
+                ).label('events_count')
+            )
+            .outerjoin(Registration, User.id == Registration.user_id)
+            .outerjoin(GameSession, Registration.session_id == GameSession.id)
+            .outerjoin(EventRegistration, User.id == EventRegistration.user_id)
+            .outerjoin(Event, EventRegistration.event_id == Event.id)
+            .where(
+                (Registration.is_active) | (EventRegistration.is_active)
+            )
+            .group_by(User.id)
+            .order_by(
+                (func.coalesce(
+                    func.sum(
+                        func.case(
+                            (GameSession.date < today, 1),
+                            else_=0
+                        )
+                    ), 0
+                ) + func.coalesce(
+                    func.sum(
+                        func.case(
+                            (Event.date < today, 1),
+                            else_=0
+                        )
+                    ), 0
+                )).desc()
+            )
+            .limit(10)
+        )
+        
+        top_users = result.all()
         
         if not top_users:
             await message.answer(
                 "🏆 <b>Топ-10 ігротеки</b>\n\n"
-                "Поки що немає статистики відвідування сесій.\n\n"
-                "Записуйтесь на ігри та відвідуйте їх, щоб потрапити в топ!",
+                "Поки що немає статистики відвідування сесій та подій.\n\n"
+                "Записуйтесь на ігри та події, щоб потрапити в топ!",
                 parse_mode="HTML"
             )
             return
         
         text = "🏆 <b>Топ-10 ігротеки</b>\n\n"
-        text += "Найактивніші гравці за кількістю відвіданих ігрових сесій:\n\n"
+        text += "Найактивніші гравці за кількістю відвіданих ігрових сесій та подій:\n\n"
         
         medals = ["🥇", "🥈", "🥉"]
         
         for i, user_data in enumerate(top_users, 1):
-            # user_data має атрибути: id, telegram_id, username, first_name, last_name, sessions_count
             medal = medals[i-1] if i <= 3 else f"{i}."
             
             name = user_data.first_name
@@ -81,11 +138,22 @@ async def show_top_players(message: Message):
                 name += f" {user_data.last_name}"
             
             username_str = f"@{user_data.username}" if user_data.username else name
-            sessions_count = user_data.sessions_count
+            game_sessions_count = user_data.game_sessions_count or 0
+            events_count = user_data.events_count or 0
+            total_count = game_sessions_count + events_count
             
-            text += f"{medal} <b>{username_str}</b> — {sessions_count} сесій\n"
+            # Формуємо детальну статистику
+            details = []
+            if game_sessions_count > 0:
+                details.append(f"{game_sessions_count} ігор")
+            if events_count > 0:
+                details.append(f"{events_count} подій")
+            
+            details_str = " + ".join(details) if details else "0 активності"
+            
+            text += f"{medal} <b>{username_str}</b> — {total_count} ({details_str})\n"
         
-        text += "\n💡 Відвідуйте більше ігор, щоб потрапити в топ!"
+        text += "\n💡 Відвідуйте більше ігор та подій, щоб потрапити в топ!"
         
         await message.answer(text, parse_mode="HTML")
 

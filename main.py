@@ -12,7 +12,7 @@ from aiogram.client.default import DefaultBotProperties
 from config import BOT_TOKEN, validate_config
 
 # Імпортуємо роутери
-from handlers import start_router, user_router, admin_router, common_router, reminder_router
+from handlers import start_router, user_router, admin_router, common_router, reminder_router, event_router
 
 # Імпортуємо базу даних
 from database import init_db, run_migrations, get_session
@@ -92,6 +92,7 @@ async def main():
     dp.include_router(common_router)
     dp.include_router(reminder_router)
     dp.include_router(user_router)
+    dp.include_router(event_router)
     dp.include_router(admin_router)
     
     logger.info("🤖 Бот запущено")

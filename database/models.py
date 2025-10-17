@@ -26,6 +26,14 @@ class ReminderSent(SQLModel, table=True):
     sent_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class EventReminderSent(SQLModel, table=True):
+    """Модель для відстеження відправлених нагадувань про події"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    event_date: date  # Дата події для якої відправлено нагадування
+    sent_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Game(SQLModel, table=True):
     """Модель гри"""
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -66,6 +74,32 @@ class Registration(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id")
     session_id: int = Field(foreign_key="gamesession.id")
+    registered_at: datetime = Field(default_factory=datetime.utcnow)
+    is_active: bool = Field(default=True)
+
+
+class Event(SQLModel, table=True):
+    """Модель події"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(index=True)  # Назва події
+    description: str  # Опис події
+    min_participants: int  # Мінімальна кількість учасників
+    max_participants: int  # Максимальна кількість учасників
+    date: date  # Дата проведення
+    start_time: time  # Час початку
+    end_time: time  # Час закінчення
+    payment_type: str = Field(default="included")  # included, free, donate
+    image_file_id: Optional[str] = None  # Telegram file_id для зображення
+    is_active: bool = Field(default=True)
+    created_by: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EventRegistration(SQLModel, table=True):
+    """Модель реєстрації на подію"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    event_id: int = Field(foreign_key="event.id")
     registered_at: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = Field(default=True)
 

@@ -6,6 +6,7 @@ def get_admin_menu() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text="🎮 Управління іграми")],
         [KeyboardButton(text="📅 Управління розкладом")],
+        [KeyboardButton(text="🎪 Управління подіями")],
         [KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="👥 Користувачі")],
         [KeyboardButton(text="📢 Сповіщення всім")],
@@ -40,6 +41,20 @@ def get_admin_schedule_menu() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text="➕ Додати гру в розклад")],
         [KeyboardButton(text="📋 Переглянути розклад")],
+        [KeyboardButton(text="🔙 Назад до адмін-панелі")]
+    ]
+    
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True
+    )
+
+
+def get_admin_events_menu() -> ReplyKeyboardMarkup:
+    """Меню управління подіями"""
+    keyboard = [
+        [KeyboardButton(text="➕ Створити подію")],
+        [KeyboardButton(text="📋 Список подій")],
         [KeyboardButton(text="🔙 Назад до адмін-панелі")]
     ]
     

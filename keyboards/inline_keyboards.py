@@ -49,9 +49,32 @@ def get_schedule_paginated_keyboard(sessions_by_date: dict, page: int = 0, items
         # Скорочуємо для кнопки (залишаємо тільки день тижня і дату)
         short_date = formatted_date.split(',')[0] + ', ' + session_date.strftime('%d.%m')
         
+        # Підраховуємо кількість ігор та подій
+        games_count = 0
+        events_count = 0
+        
+        for item in sessions:
+            if hasattr(item, 'game_id'):  # Це ігрова сесія
+                games_count += 1
+            elif hasattr(item, 'title'):  # Це подія
+                events_count += 1
+        
+        # Формуємо текст кнопки
+        items_text = []
+        if games_count > 0:
+            items_text.append(f"{games_count} ігор")
+        if events_count > 0:
+            items_text.append(f"{events_count} подій")
+        
+        if items_text:
+            items_str = " + ".join(items_text)
+            button_text = f"📅 {short_date} ({items_str})"
+        else:
+            button_text = f"📅 {short_date}"
+        
         keyboard.append([
             InlineKeyboardButton(
-                text=f"📅 {short_date} ({len(sessions)} ігор)",
+                text=button_text,
                 callback_data=f"schedule_date_{session_date.isoformat()}"
             )
         ])
@@ -362,6 +385,210 @@ def get_my_registrations_keyboard(registrations: List) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="❌ У вас немає активних записів",
                 callback_data="no_registrations"
+            )
+        ])
+    
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🔙 Головне меню",
+            callback_data="back_to_menu"
+        )
+    ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+# ===== EVENT KEYBOARDS =====
+
+def get_events_list_keyboard(events: List, for_registration: bool = False, page: int = 0) -> InlineKeyboardMarkup:
+    """Клавіатура для списку подій"""
+    keyboard = []
+    
+    # Обчислюємо які події показувати
+    items_per_page = 7
+    start_idx = page * items_per_page
+    end_idx = start_idx + items_per_page
+    total_pages = (len(events) + items_per_page - 1) // items_per_page
+    
+    # Показуємо тільки події поточної сторінки
+    page_events = events[start_idx:end_idx]
+    
+    for event in page_events:
+        if for_registration:
+            callback_data = f"event_register_{event.id}"
+            text = f"🎪 {event.title}"
+        else:
+            callback_data = f"admin_event_{event.id}"
+            text = f"🎪 {event.title}"
+        
+        keyboard.append([
+            InlineKeyboardButton(
+                text=text,
+                callback_data=callback_data
+            )
+        ])
+    
+    # Додаємо навігацію
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="◀️ Попередня",
+                callback_data=f"events_page_{page-1}_{'register' if for_registration else 'admin'}"
+            )
+        )
+    
+    if page < total_pages - 1:
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Наступна ▶️",
+                callback_data=f"events_page_{page+1}_{'register' if for_registration else 'admin'}"
+            )
+        )
+    
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    
+    # Додаємо кнопку назад
+    if for_registration:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🔙 Головне меню",
+                callback_data="back_to_menu"
+            )
+        ])
+    else:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data="admin_events_list"
+            )
+        ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_event_actions_keyboard(event_id: int, is_registered: bool = False) -> InlineKeyboardMarkup:
+    """Клавіатура дій для події"""
+    keyboard = []
+    
+    if is_registered:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="❌ Скасувати реєстрацію",
+                callback_data=f"event_cancel_{event_id}"
+            )
+        ])
+    else:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="✅ Зареєструватися",
+                callback_data=f"event_register_{event_id}"
+            )
+        ])
+    
+    keyboard.append([
+        InlineKeyboardButton(
+            text="👥 Список учасників",
+            callback_data=f"event_participants_list_{event_id}"
+        )
+    ])
+    
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🔙 Назад до дат",
+            callback_data="back_to_events"
+        )
+    ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_event_edit_keyboard(event_id: int) -> InlineKeyboardMarkup:
+    """Клавіатура для редагування події"""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text="🏷️ Редагувати назву",
+                callback_data=f"start_edit_event_title_{event_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📝 Редагувати опис",
+                callback_data=f"start_edit_event_description_{event_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📅 Змінити дату",
+                callback_data=f"start_edit_event_date_{event_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="⏰ Змінити час",
+                callback_data=f"start_edit_event_time_{event_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="👥 Змінити кількість учасників",
+                callback_data=f"start_edit_event_participants_{event_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="💳 Змінити тип оплати",
+                callback_data=f"start_edit_event_payment_{event_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📸 Змінити зображення",
+                callback_data=f"start_edit_event_image_{event_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="👥 Список учасників",
+                callback_data=f"admin_participants_list_{event_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🗑️ Видалити подію",
+                callback_data=f"delete_event_{event_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад до списку",
+                callback_data="admin_events_list"
+            )
+        ]
+    ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_my_event_registrations_keyboard(registrations: List) -> InlineKeyboardMarkup:
+    """Клавіатура для моїх реєстрацій на події"""
+    keyboard = []
+    
+    for reg in registrations:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"🎪 Подія #{reg.event_id}",
+                callback_data=f"view_event_{reg.event_id}"
+            )
+        ])
+    
+    if not keyboard:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="❌ У вас немає активних реєстрацій на події",
+                callback_data="no_event_registrations"
             )
         ])
     
