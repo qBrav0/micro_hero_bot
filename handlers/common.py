@@ -54,7 +54,7 @@ async def about_club(message: Message):
 async def show_top_players(message: Message):
     """Показати топ-10 гравців за кількістю відвіданих сесій та подій"""
     from database import get_session
-    from sqlalchemy import select, func
+    from sqlalchemy import select, func, case
     from database.models import User, Registration, GameSession, EventRegistration, Event
     from datetime import date
     
@@ -71,7 +71,7 @@ async def show_top_players(message: Message):
                 User.last_name,
                 func.coalesce(
                     func.sum(
-                        func.case(
+                        case(
                             (GameSession.date < today, 1),
                             else_=0
                         )
@@ -79,7 +79,7 @@ async def show_top_players(message: Message):
                 ).label('game_sessions_count'),
                 func.coalesce(
                     func.sum(
-                        func.case(
+                        case(
                             (Event.date < today, 1),
                             else_=0
                         )
@@ -97,14 +97,14 @@ async def show_top_players(message: Message):
             .order_by(
                 (func.coalesce(
                     func.sum(
-                        func.case(
+                        case(
                             (GameSession.date < today, 1),
                             else_=0
                         )
                     ), 0
                 ) + func.coalesce(
                     func.sum(
-                        func.case(
+                        case(
                             (Event.date < today, 1),
                             else_=0
                         )
