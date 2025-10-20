@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from datetime import date
 import os
+import logging
 
 from database import get_session
 from services import GameService, ScheduleService
@@ -17,6 +18,7 @@ from utils.helpers import format_date, format_time
 from database.crud import get_game, get_registrations
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 # FSM стани для додавання гри
@@ -558,48 +560,78 @@ async def show_schedule_management(message: Message, state: FSMContext):
 @admin_only
 async def start_create_schedule(message: Message, state: FSMContext):
     """Почати створення розкладу"""
+    logger.info(f"🔍 [START_SCHEDULE] Адмін {message.from_user.username} (ID: {message.from_user.id}) розпочав додавання гри в розклад")
+    
     await state.set_state(CreateScheduleStates.waiting_for_date)
+    logger.info(f"✅ [START_SCHEDULE] State встановлено: waiting_for_date")
     
     text = "📅 <b>Додавання гри в розклад</b>\n\n"
     text += "Оберіть дату або введіть вручну (ДД.ММ.РРРР):"
     
     keyboard = get_date_selection_keyboard()
+    logger.info(f"✅ [START_SCHEDULE] Клавіатура з датами згенерована")
     
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    logger.info(f"✅ [START_SCHEDULE] Повідомлення з датами відправлено")
 
 
 @router.callback_query(F.data.startswith("select_date_"))
 @admin_only
 async def process_date_selection(callback: CallbackQuery, state: FSMContext):
     """Обробка вибору дати"""
+    logger.info(f"🔍 [DATE_SELECTION] Початок обробки вибору дати. callback_data: {callback.data}")
+    logger.info(f"🔍 [DATE_SELECTION] Користувач: {callback.from_user.username} (ID: {callback.from_user.id})")
+    
+    try:
+        await callback.answer()
+        logger.info(f"✅ [DATE_SELECTION] callback.answer() виконано успішно")
+    except Exception as e:
+        logger.error(f"❌ [DATE_SELECTION] Помилка при виклику callback.answer(): {e}", exc_info=True)
+    
     date_str = callback.data.split("_")[-1]
-    selected_date = date.fromisoformat(date_str)
+    logger.info(f"🔍 [DATE_SELECTION] Розпарсена дата: {date_str}")
+    
+    try:
+        selected_date = date.fromisoformat(date_str)
+        logger.info(f"✅ [DATE_SELECTION] Дата перетворена успішно: {selected_date}")
+    except Exception as e:
+        logger.error(f"❌ [DATE_SELECTION] Помилка при перетворенні дати: {e}", exc_info=True)
+        await callback.message.answer("❌ Помилка при обробці дати")
+        return
     
     await state.update_data(date=selected_date)
+    logger.info(f"✅ [DATE_SELECTION] Дата збережена у state: {selected_date}")
     
     # Перевіряємо чи є реально активні сесії на цей день
     from database import get_session, get_day_pricing
     from sqlmodel import select
     from database.models import GameSession
     
+    logger.info(f"🔍 [DATE_SELECTION] Початок перевірки існуючих сесій на дату {selected_date}")
+    
     async for db_session in get_session():
         # Перевіряємо чи є сесії на цю дату
+        logger.info(f"🔍 [DATE_SELECTION] Виконання запиту до БД...")
         result = await db_session.execute(
             select(GameSession).where(GameSession.date == selected_date)
         )
         existing_sessions = result.scalars().all()
+        logger.info(f"✅ [DATE_SELECTION] Знайдено існуючих сесій: {len(existing_sessions)}")
         
         if existing_sessions:
             # Є сесії на цей день - використовуємо існуючу ціну
+            logger.info(f"🔍 [DATE_SELECTION] Є існуючі сесії, отримуємо ціни...")
             pricing = await get_day_pricing(db_session, selected_date)
             
             if pricing:
+                logger.info(f"✅ [DATE_SELECTION] Знайдено ціни: дорослі={pricing.adult_price}, діти={pricing.child_price}")
                 await state.update_data(
                     adult_price=pricing.adult_price,
                     child_price=pricing.child_price,
                     pricing_exists=True
                 )
                 await state.set_state(CreateScheduleStates.waiting_for_start_time)
+                logger.info(f"✅ [DATE_SELECTION] State встановлено: waiting_for_start_time")
                 await callback.message.edit_text(
                     f"📅 Дата: <b>{selected_date.strftime('%d.%m.%Y')}</b>\n\n"
                     f"💰 Ціни на цей день вже встановлені:\n"
@@ -608,8 +640,10 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
                     f"⏰ Введіть час початку (ЧЧ:ХХ):",
                     parse_mode="HTML"
                 )
+                logger.info(f"✅ [DATE_SELECTION] Повідомлення успішно відредаговано")
             else:
                 # Є сесії але немає ціни (не повинно статися, але на всяк)
+                logger.warning(f"⚠️ [DATE_SELECTION] Є сесії але немає ціни для дати {selected_date}")
                 await state.update_data(pricing_exists=False)
                 await state.set_state(CreateScheduleStates.waiting_for_adult_price)
                 await callback.message.edit_text(
@@ -617,8 +651,10 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
                     f"💰 Введіть ціну входу для дорослих (в грн):",
                     parse_mode="HTML"
                 )
+                logger.info(f"✅ [DATE_SELECTION] Запитуємо ціну (є сесії, але немає pricing)")
         else:
             # Немає сесій на цей день - це перша сесія, запитуємо ціну
+            logger.info(f"🔍 [DATE_SELECTION] Немає існуючих сесій, запитуємо ціну")
             await state.update_data(pricing_exists=False)
             await state.set_state(CreateScheduleStates.waiting_for_adult_price)
             await callback.message.edit_text(
@@ -627,8 +663,9 @@ async def process_date_selection(callback: CallbackQuery, state: FSMContext):
                 f"Введіть ціну входу для дорослих (в грн):",
                 parse_mode="HTML"
             )
+            logger.info(f"✅ [DATE_SELECTION] Запитуємо ціну (перша сесія на день)")
     
-    await callback.answer()
+    logger.info(f"✅ [DATE_SELECTION] Обробка вибору дати завершена успішно")
 
 
 @router.message(CreateScheduleStates.waiting_for_date)

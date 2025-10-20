@@ -58,6 +58,11 @@ async def reminder_background_task(bot: Bot):
             continue
 
 
+async def on_callback_query(callback_query):
+    """Middleware для логування всіх callback запитів"""
+    logger.info(f"📞 [CALLBACK] Отримано callback: data='{callback_query.data}', user={callback_query.from_user.username} (ID: {callback_query.from_user.id})")
+
+
 async def main():
     """Головна функція запуску бота"""
     
@@ -86,6 +91,11 @@ async def main():
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     dp = Dispatcher()
+    
+    # Реєструємо middleware для логування callback
+    dp.callback_query.middleware(lambda handler, event, data: 
+        logger.info(f"📞 [CALLBACK] data='{event.data}', user={event.from_user.username} (ID: {event.from_user.id})") or handler(event, data)
+    )
     
     # Реєстрація роутерів
     dp.include_router(start_router)

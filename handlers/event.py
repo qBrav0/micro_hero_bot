@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from datetime import date
 import os
+import logging
 
 from database import get_session
 from services import EventService
@@ -17,6 +18,7 @@ from utils.helpers import format_date, format_time
 from database.crud import get_event, get_event_registrations
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 # FSM стани для створення події
@@ -101,22 +103,41 @@ async def process_event_description(message: Message, state: FSMContext):
     text = "📅 <b>Оберіть дату проведення</b>\n\n"
     text += "Оберіть дату або введіть вручну (ДД.ММ.РРРР):"
     
-    keyboard = get_date_selection_keyboard()
+    keyboard = get_date_selection_keyboard(prefix="select_event_date")
     
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
-@router.callback_query(F.data.startswith("select_date_"))
+@router.callback_query(F.data.startswith("select_event_date_"))
 @admin_only
 async def process_event_date_selection(callback: CallbackQuery, state: FSMContext):
     """Обробка вибору дати для події"""
+    logger.info(f"🔍 [EVENT_DATE_SELECTION] Початок обробки вибору дати для події. callback_data: {callback.data}")
+    logger.info(f"🔍 [EVENT_DATE_SELECTION] Користувач: {callback.from_user.username} (ID: {callback.from_user.id})")
+    
+    try:
+        await callback.answer()
+        logger.info(f"✅ [EVENT_DATE_SELECTION] callback.answer() виконано успішно")
+    except Exception as e:
+        logger.error(f"❌ [EVENT_DATE_SELECTION] Помилка при виклику callback.answer(): {e}", exc_info=True)
+    
     date_str = callback.data.split("_")[-1]
-    selected_date = date.fromisoformat(date_str)
+    logger.info(f"🔍 [EVENT_DATE_SELECTION] Розпарсена дата: {date_str}")
+    
+    try:
+        selected_date = date.fromisoformat(date_str)
+        logger.info(f"✅ [EVENT_DATE_SELECTION] Дата перетворена успішно: {selected_date}")
+    except Exception as e:
+        logger.error(f"❌ [EVENT_DATE_SELECTION] Помилка при перетворенні дати: {e}", exc_info=True)
+        await callback.message.answer("❌ Помилка при обробці дати")
+        return
     
     # Перевіряємо в якому стані ми знаходимося
     current_state = await state.get_state()
+    logger.info(f"🔍 [EVENT_DATE_SELECTION] Поточний state: {current_state}")
     
     if current_state == CreateEventStates.waiting_for_date.state:
+        logger.info(f"✅ [EVENT_DATE_SELECTION] Це створення нової події")
         # Це створення нової події
         await state.update_data(date=selected_date)
         await state.set_state(CreateEventStates.waiting_for_start_time)
@@ -140,8 +161,6 @@ async def process_event_date_selection(callback: CallbackQuery, state: FSMContex
                 )
         
         await state.clear()
-    
-    await callback.answer()
 
 
 @router.message(CreateEventStates.waiting_for_date)
@@ -1365,7 +1384,7 @@ async def start_edit_event_date(callback: CallbackQuery, state: FSMContext):
     text = "📅 <b>Оберіть нову дату проведення</b>\n\n"
     text += "Оберіть дату або введіть вручну (ДД.ММ.РРРР):"
     
-    keyboard = get_date_selection_keyboard()
+    keyboard = get_date_selection_keyboard(prefix="select_event_date")
     
     await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()

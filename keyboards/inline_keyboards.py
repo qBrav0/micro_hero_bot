@@ -267,8 +267,12 @@ def get_games_list_keyboard(games: List, for_schedule: bool = False, page: int =
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def get_date_selection_keyboard() -> InlineKeyboardMarkup:
-    """Клавіатура для вибору дати (найближчі 7 днів)"""
+def get_date_selection_keyboard(prefix: str = "select_date") -> InlineKeyboardMarkup:
+    """Клавіатура для вибору дати (найближчі 7 днів)
+    
+    Args:
+        prefix: Префікс для callback_data (за замовчуванням "select_date")
+    """
     keyboard = []
     today = date.today()
     
@@ -287,7 +291,7 @@ def get_date_selection_keyboard() -> InlineKeyboardMarkup:
         keyboard.append([
             InlineKeyboardButton(
                 text=label,
-                callback_data=f"select_date_{current_date.isoformat()}"
+                callback_data=f"{prefix}_{current_date.isoformat()}"
             )
         ])
     

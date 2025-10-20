@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import date
+import logging
 
 from database import get_session, get_user_by_telegram_id
 from services import RegistrationService, NotificationService, CombinedScheduleService
@@ -9,6 +10,7 @@ from utils.helpers import format_date, format_time, format_time_safe
 from database.crud import get_game, get_registrations
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 @router.message(F.text == "📅 Розклад ігротеки")
@@ -41,6 +43,8 @@ async def show_schedule(message: Message):
 @router.callback_query(F.data.startswith("schedule_date_"))
 async def show_date_sessions(callback: CallbackQuery):
     """Показати ігри та події на обрану дату"""
+    await callback.answer()
+    
     date_str = callback.data.split("_")[-1]
     selected_date = date.fromisoformat(date_str)
     
@@ -49,7 +53,11 @@ async def show_date_sessions(callback: CallbackQuery):
         items = await CombinedScheduleService.get_schedule_for_date(session, selected_date)
         
         if not items:
-            await callback.answer("На цю дату немає ігор та подій", show_alert=True)
+            await callback.message.edit_text(
+                f"📅 <b>{format_date(selected_date)}</b>\n\n"
+                "На цю дату немає запланованих ігор та подій",
+                parse_mode="HTML"
+            )
             return
         
         # Отримуємо ціни на цей день
@@ -154,8 +162,6 @@ async def show_date_sessions(callback: CallbackQuery):
                         await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
                     except Exception:
                         pass
-            
-            await callback.answer()
             return
         
         keyboard.append([{"text": "🔙 Назад до дат", "callback_data": "back_to_schedule"}])
@@ -188,8 +194,6 @@ async def show_date_sessions(callback: CallbackQuery):
                     await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
                 except Exception:
                     pass
-        
-        await callback.answer()
 
 
 @router.callback_query(F.data.startswith("view_event_"))
@@ -217,6 +221,9 @@ async def view_event_details(callback: CallbackQuery):
         if not event:
             await callback.answer("❌ Подію не знайдено", show_alert=True)
             return
+        
+        # Відповідаємо на callback щоб прибрати "завантажувальний" стан
+        await callback.answer()
         
         # Отримуємо реєстрації
         registrations = await get_event_registrations(db_session, event_id, active_only=True)
@@ -280,8 +287,13 @@ async def view_event_details(callback: CallbackQuery):
                             reply_markup=keyboard,
                             parse_mode="HTML"
                         )
-                    except Exception:
-                        pass
+                    except Exception as e2:
+                        # Якщо file_id невалідний, відправляємо тільки текст
+                        logger.warning(f"Невалідний image_file_id для події {event_id}. Відправка без фото. Помилка: {e2}")
+                        try:
+                            await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                        except Exception:
+                            pass
             else:
                 # Якщо немає фото, видаляємо поточне повідомлення і відправляємо нове фото з підписом
                 try:
@@ -293,8 +305,13 @@ async def view_event_details(callback: CallbackQuery):
                         parse_mode="HTML"
                     )
                 except Exception as e:
-                    # Якщо не вдалося відправити фото, відправляємо тільки текст
-                    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+                    # Якщо не вдалося відправити фото (невалідний file_id), відправляємо тільки текст
+                    # Повідомлення вже видалене, тому відправляємо нове
+                    logger.warning(f"Невалідний image_file_id для події {event_id}. Відправка без фото. Помилка: {e}")
+                    try:
+                        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                    except Exception:
+                        pass
         else:
             # Якщо немає фото події, перевіряємо чи поточне повідомлення містить фото
             has_photo = callback.message.photo is not None
@@ -309,8 +326,6 @@ async def view_event_details(callback: CallbackQuery):
             else:
                 # Відправляємо тільки текст
                 await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-        
-        await callback.answer()
 
 
 
@@ -471,27 +486,36 @@ async def view_session_details(callback: CallbackQuery, skip_answer: bool = Fals
         
         # Відправляємо з фото якщо воно є
         if has_image and not has_photo:
-            await callback.message.delete()
-            
-            # Використовуємо file_id якщо є, інакше локальний файл
-            if game.image_file_id:
-                await callback.message.answer_photo(
-                    photo=game.image_file_id,
-                    caption=text,
-                    reply_markup=keyboard,
-                    parse_mode="HTML"
-                )
-            elif game.image_path:
-                from aiogram.types import FSInputFile
-                import os
-                if os.path.exists(game.image_path):
-                    photo = FSInputFile(game.image_path)
+            try:
+                await callback.message.delete()
+                
+                # Використовуємо file_id якщо є, інакше локальний файл
+                if game.image_file_id:
                     await callback.message.answer_photo(
-                        photo=photo,
+                        photo=game.image_file_id,
                         caption=text,
                         reply_markup=keyboard,
                         parse_mode="HTML"
                     )
+                elif game.image_path:
+                    from aiogram.types import FSInputFile
+                    import os
+                    if os.path.exists(game.image_path):
+                        photo = FSInputFile(game.image_path)
+                        await callback.message.answer_photo(
+                            photo=photo,
+                            caption=text,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+            except Exception as e:
+                # Якщо не вдалося відправити фото (невалідний file_id), відправляємо тільки текст
+                # Повідомлення вже видалене, тому відправляємо нове
+                logger.warning(f"Невалідний image_file_id для гри {game.name} (session {session_id}). Відправка без фото. Помилка: {e}")
+                try:
+                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                except Exception:
+                    pass
         elif has_photo:
             # Якщо вже є фото, оновлюємо caption
             try:
