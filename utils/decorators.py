@@ -30,6 +30,13 @@ def admin_only(func: Callable) -> Callable:
             callback_data = message_or_callback.data
             logger.info(f"🔍 [ADMIN_ONLY] CallbackQuery від користувача: {username} (ID: {user_id}), callback_data: {callback_data}, функція: {func.__name__}")
         
+        # Детальне логування kwargs для перевірки чи передається state
+        logger.info(f"🔍 [ADMIN_ONLY] kwargs keys: {list(kwargs.keys())}")
+        if 'state' in kwargs:
+            logger.info(f"✅ [ADMIN_ONLY] state присутній в kwargs")
+        else:
+            logger.warning(f"⚠️ [ADMIN_ONLY] state ВІДСУТНІЙ в kwargs!")
+        
         logger.info(f"🔍 [ADMIN_ONLY] Перевірка доступу: user_id={user_id}, ADMIN_IDS={ADMIN_IDS}")
         
         if user_id not in ADMIN_IDS:

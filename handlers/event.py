@@ -47,7 +47,7 @@ class EditEventStates(StatesGroup):
     waiting_for_image = State()
 
 
-class KickPlayerStates(StatesGroup):
+class KickParticipantStates(StatesGroup):
     waiting_for_reason = State()
     waiting_for_confirmation = State()
 
@@ -807,7 +807,7 @@ async def admin_kick_participant_start(callback: CallbackQuery, state: FSMContex
     
     # Зберігаємо дані в FSM
     await state.update_data(event_id=event_id, user_id=user_id)
-    await state.set_state(KickPlayerStates.waiting_for_reason)
+    await state.set_state(KickParticipantStates.waiting_for_reason)
     
     await callback.message.edit_text(
         "🚫 <b>Кік учасника з події</b>\n\n"
@@ -817,7 +817,7 @@ async def admin_kick_participant_start(callback: CallbackQuery, state: FSMContex
     await callback.answer()
 
 
-@router.message(KickPlayerStates.waiting_for_reason)
+@router.message(KickParticipantStates.waiting_for_reason)
 @admin_only
 async def admin_kick_participant_reason(message: Message, state: FSMContext):
     """Обробити причину кіку учасника з події"""
@@ -827,12 +827,22 @@ async def admin_kick_participant_reason(message: Message, state: FSMContext):
         reason = None
     
     await state.update_data(reason=reason)
-    await state.set_state(KickPlayerStates.waiting_for_confirmation)
+    await state.set_state(KickParticipantStates.waiting_for_confirmation)
     
     # Отримуємо дані учасника
     data = await state.get_data()
-    event_id = data['event_id']
-    user_id = data['user_id']
+    event_id = data.get('event_id')
+    user_id = data.get('user_id')
+    
+    # Перевіряємо чи є необхідні дані
+    if not event_id or not user_id:
+        await message.answer(
+            "❌ Помилка: дані про подію або учасника втрачено. "
+            "Будь ласка, спробуйте ще раз.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
     
     async for db_session in get_session():
         from sqlmodel import select
@@ -887,9 +897,19 @@ async def admin_kick_participant_reason(message: Message, state: FSMContext):
 async def admin_confirm_kick_participant(callback: CallbackQuery, state: FSMContext):
     """Підтвердити кік учасника з події"""
     data = await state.get_data()
-    event_id = data['event_id']
-    user_id = data['user_id']
+    event_id = data.get('event_id')
+    user_id = data.get('user_id')
     reason = data.get('reason')
+    
+    # Перевіряємо чи є необхідні дані
+    if not event_id or not user_id:
+        await callback.answer(
+            "❌ Помилка: дані про подію або учасника втрачено. "
+            "Будь ласка, спробуйте ще раз.",
+            show_alert=True
+        )
+        await state.clear()
+        return
     
     async for db_session in get_session():
         from sqlmodel import select
@@ -947,10 +967,7 @@ async def admin_confirm_kick_participant(callback: CallbackQuery, state: FSMCont
             kick_message += "📝 Причина не вказана"
         
         try:
-            from aiogram import Bot
-            from config import BOT_TOKEN
-            bot = Bot(token=BOT_TOKEN)
-            await bot.send_message(
+            await callback.bot.send_message(
                 chat_id=participant.telegram_id,
                 text=kick_message,
                 parse_mode="HTML"
@@ -1064,10 +1081,6 @@ async def admin_delete_event_confirmed(callback: CallbackQuery):
         if registrations:
             from sqlmodel import select
             from database.models import User
-            from aiogram import Bot
-            from config import BOT_TOKEN
-            
-            bot = Bot(token=BOT_TOKEN)
             
             cancel_message = f"❌ <b>Подію скасовано</b>\n\n"
             cancel_message += f"🎪 Подія: <b>{event.title}</b>\n"
@@ -1083,7 +1096,7 @@ async def admin_delete_event_confirmed(callback: CallbackQuery):
                     user = result.scalar_one_or_none()
                     
                     if user:
-                        await bot.send_message(
+                        await callback.bot.send_message(
                             chat_id=user.telegram_id,
                             text=cancel_message,
                             parse_mode="HTML"

@@ -7,6 +7,7 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.fsm.storage.memory import MemoryStorage
 
 # Імпортуємо конфігурацію
 from config import BOT_TOKEN, validate_config
@@ -90,7 +91,10 @@ async def main():
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
-    dp = Dispatcher()
+    
+    # Налаштування FSM storage
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
     
     # Реєструємо middleware для логування callback
     dp.callback_query.middleware(lambda handler, event, data: 

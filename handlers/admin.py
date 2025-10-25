@@ -1682,13 +1682,40 @@ async def admin_show_players_list(callback: CallbackQuery):
 @admin_only
 async def admin_kick_player_start(callback: CallbackQuery, state: FSMContext):
     """Почати процес кіку гравця"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🔍 [KICK_PLAYER_START] === ПОЧАТОК ФУНКЦІЇ ===")
+    logger.info(f"🔍 [KICK_PLAYER_START] callback.data: {callback.data}")
+    logger.info(f"🔍 [KICK_PLAYER_START] user: {callback.from_user.username} (ID: {callback.from_user.id})")
+    logger.info(f"🔍 [KICK_PLAYER_START] state object: {state}")
+    logger.info(f"🔍 [KICK_PLAYER_START] state type: {type(state)}")
+    
     parts = callback.data.split("_")
     session_id = int(parts[3])
     user_id = int(parts[4])
     
+    logger.info(f"🔍 [KICK_PLAYER_START] Розпарсені дані: session_id={session_id}, user_id={user_id}")
+    
+    # Перевіряємо поточний стан FSM перед збереженням
+    current_state = await state.get_state()
+    current_data = await state.get_data()
+    logger.info(f"🔍 [KICK_PLAYER_START] Поточний FSM state: {current_state}")
+    logger.info(f"🔍 [KICK_PLAYER_START] Поточні FSM data: {current_data}")
+    
     # Зберігаємо дані в FSM
+    logger.info(f"🔍 [KICK_PLAYER_START] Збереження даних в FSM...")
     await state.update_data(session_id=session_id, user_id=user_id)
+    logger.info(f"✅ [KICK_PLAYER_START] update_data виконано")
+    
     await state.set_state(KickPlayerStates.waiting_for_reason)
+    logger.info(f"✅ [KICK_PLAYER_START] set_state виконано")
+    
+    # Перевіряємо що дані збережено
+    data = await state.get_data()
+    new_state = await state.get_state()
+    logger.info(f"✅ [KICK_PLAYER_START] Дані після збереження: {data}")
+    logger.info(f"✅ [KICK_PLAYER_START] State після збереження: {new_state}")
     
     await callback.message.edit_text(
         "🚫 <b>Кік гравця з сесії</b>\n\n"
@@ -1696,24 +1723,62 @@ async def admin_kick_player_start(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML"
     )
     await callback.answer()
+    logger.info(f"🔍 [KICK_PLAYER_START] === КІНЕЦЬ ФУНКЦІЇ ===")
 
 
 @router.message(KickPlayerStates.waiting_for_reason)
 @admin_only
 async def admin_kick_player_reason(message: Message, state: FSMContext):
     """Обробити причину кіку"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🔍 [KICK_PLAYER_REASON] === ПОЧАТОК ФУНКЦІЇ ===")
+    logger.info(f"🔍 [KICK_PLAYER_REASON] Отримано повідомлення від користувача {message.from_user.username} (ID: {message.from_user.id})")
+    logger.info(f"🔍 [KICK_PLAYER_REASON] Текст повідомлення: {message.text}")
+    logger.info(f"🔍 [KICK_PLAYER_REASON] state object: {state}")
+    logger.info(f"🔍 [KICK_PLAYER_REASON] state type: {type(state)}")
+    
+    # Перевіряємо поточний стан FSM
+    current_state = await state.get_state()
+    logger.info(f"🔍 [KICK_PLAYER_REASON] Поточний FSM state: {current_state}")
+    
+    # Отримуємо дані ПЕРЕД додаванням причини
+    data_before = await state.get_data()
+    logger.info(f"🔍 [KICK_PLAYER_REASON] Дані з FSM ПЕРЕД оновленням: {data_before}")
+    
     reason = message.text.strip()
     
     if reason.lower() in ['пропустити', 'skip', 'немає', 'без причини']:
         reason = None
     
+    logger.info(f"🔍 [KICK_PLAYER_REASON] Оброблена причина: {reason}")
+    
     await state.update_data(reason=reason)
     await state.set_state(KickPlayerStates.waiting_for_confirmation)
+    logger.info(f"✅ [KICK_PLAYER_REASON] Причину додано до FSM")
     
-    # Отримуємо дані гравця
+    # Отримуємо дані гравця ПІСЛЯ додавання причини
     data = await state.get_data()
-    session_id = data['session_id']
-    user_id = data['user_id']
+    logger.info(f"🔍 [KICK_PLAYER_REASON] Дані з FSM ПІСЛЯ оновлення: {data}")
+    
+    session_id = data.get('session_id')
+    user_id = data.get('user_id')
+    
+    logger.info(f"🔍 [KICK_PLAYER_REASON] Розпарсені дані: session_id={session_id}, user_id={user_id}")
+    
+    # Перевіряємо чи є необхідні дані
+    if not session_id or not user_id:
+        logger.error(f"❌ [KICK_PLAYER_REASON] ВІДСУТНІ ДАНІ!")
+        logger.error(f"❌ [KICK_PLAYER_REASON] session_id={session_id}, user_id={user_id}")
+        logger.error(f"❌ [KICK_PLAYER_REASON] Повні дані FSM: {data}")
+        await message.answer(
+            "❌ Помилка: дані про сесію або гравця втрачено. "
+            "Будь ласка, спробуйте ще раз.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
     
     async for db_session in get_session():
         from sqlmodel import select
@@ -1775,9 +1840,19 @@ async def admin_kick_player_reason(message: Message, state: FSMContext):
 async def admin_confirm_kick(callback: CallbackQuery, state: FSMContext):
     """Підтвердити кік гравця"""
     data = await state.get_data()
-    session_id = data['session_id']
-    user_id = data['user_id']
+    session_id = data.get('session_id')
+    user_id = data.get('user_id')
     reason = data.get('reason')
+    
+    # Перевіряємо чи є необхідні дані
+    if not session_id or not user_id:
+        await callback.answer(
+            "❌ Помилка: дані про сесію або гравця втрачено. "
+            "Будь ласка, спробуйте ще раз.",
+            show_alert=True
+        )
+        await state.clear()
+        return
     
     async for db_session in get_session():
         from sqlmodel import select
@@ -1842,10 +1917,7 @@ async def admin_confirm_kick(callback: CallbackQuery, state: FSMContext):
             kick_message += "📝 Причина не вказана"
         
         try:
-            from aiogram import Bot
-            from config import BOT_TOKEN
-            bot = Bot(token=BOT_TOKEN)
-            await bot.send_message(
+            await callback.bot.send_message(
                 chat_id=player.telegram_id,
                 text=kick_message,
                 parse_mode="HTML"
@@ -2391,10 +2463,6 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
             return
         
         # Відправляємо сповіщення
-        from aiogram import Bot
-        from config import BOT_TOKEN
-        bot = Bot(token=BOT_TOKEN)
-        
         sent_count = 0
         failed_count = 0
         
@@ -2403,7 +2471,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                 # Відправляємо різні типи повідомлень
                 if notification_data["type"] == "text":
                     admin_message = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['text']}"
-                    await bot.send_message(
+                    await callback.bot.send_message(
                         chat_id=user.telegram_id,
                         text=admin_message,
                         parse_mode="HTML"
@@ -2411,7 +2479,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     
                 elif notification_data["type"] == "photo":
                     admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
-                    await bot.send_photo(
+                    await callback.bot.send_photo(
                         chat_id=user.telegram_id,
                         photo=notification_data['photo'],
                         caption=admin_caption,
@@ -2420,19 +2488,19 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     
                 elif notification_data["type"] == "sticker":
                     # Спочатку надсилаємо текст, потім стікер
-                    await bot.send_message(
+                    await callback.bot.send_message(
                         chat_id=user.telegram_id,
                         text="📢 <b>Сповіщення від адміністрації</b>",
                         parse_mode="HTML"
                     )
-                    await bot.send_sticker(
+                    await callback.bot.send_sticker(
                         chat_id=user.telegram_id,
                         sticker=notification_data['sticker']
                     )
                     
                 elif notification_data["type"] == "voice":
                     admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
-                    await bot.send_voice(
+                    await callback.bot.send_voice(
                         chat_id=user.telegram_id,
                         voice=notification_data['voice'],
                         caption=admin_caption,
@@ -2441,7 +2509,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     
                 elif notification_data["type"] == "video":
                     admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
-                    await bot.send_video(
+                    await callback.bot.send_video(
                         chat_id=user.telegram_id,
                         video=notification_data['video'],
                         caption=admin_caption,
@@ -2450,7 +2518,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     
                 elif notification_data["type"] == "document":
                     admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
-                    await bot.send_document(
+                    await callback.bot.send_document(
                         chat_id=user.telegram_id,
                         document=notification_data['document'],
                         caption=admin_caption,
@@ -2459,7 +2527,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     
                 elif notification_data["type"] == "audio":
                     admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
-                    await bot.send_audio(
+                    await callback.bot.send_audio(
                         chat_id=user.telegram_id,
                         audio=notification_data['audio'],
                         caption=admin_caption,
@@ -2592,10 +2660,6 @@ async def confirm_delete_session(callback: CallbackQuery):
         if success:
             # Сповіщаємо всіх зареєстрованих гравців
             if players_to_notify:
-                from aiogram import Bot
-                from config import BOT_TOKEN
-                bot = Bot(token=BOT_TOKEN)
-                
                 notification_text = f"❌ <b>Сесію гри скасовано</b>\n\n"
                 notification_text += f"🎮 Гра: <b>{game.name}</b>\n"
                 notification_text += f"📅 Дата: {format_date(game_session.date)}\n"
@@ -2604,7 +2668,7 @@ async def confirm_delete_session(callback: CallbackQuery):
                 
                 for player in players_to_notify:
                     try:
-                        await bot.send_message(
+                        await callback.bot.send_message(
                             chat_id=player.telegram_id,
                             text=notification_text,
                             parse_mode="HTML"
