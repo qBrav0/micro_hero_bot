@@ -61,7 +61,37 @@ async def show_top_players(message: Message):
     async for session in get_session():
         today = date.today()
         
-        # Отримуємо комбіновану статистику (ігри + події)
+        # Підзапит для підрахунку ігрових сесій
+        game_sessions_subquery = (
+            select(
+                Registration.user_id,
+                func.count(func.distinct(GameSession.id)).label('game_sessions_count')
+            )
+            .join(GameSession, Registration.session_id == GameSession.id)
+            .where(
+                Registration.is_active == True,
+                GameSession.date < today
+            )
+            .group_by(Registration.user_id)
+            .subquery()
+        )
+        
+        # Підзапит для підрахунку подій
+        events_subquery = (
+            select(
+                EventRegistration.user_id,
+                func.count(func.distinct(Event.id)).label('events_count')
+            )
+            .join(Event, EventRegistration.event_id == Event.id)
+            .where(
+                EventRegistration.is_active == True,
+                Event.date < today
+            )
+            .group_by(EventRegistration.user_id)
+            .subquery()
+        )
+        
+        # Основний запит, що об'єднує обидва підзапити
         result = await session.execute(
             select(
                 User.id,
@@ -69,47 +99,18 @@ async def show_top_players(message: Message):
                 User.username,
                 User.first_name,
                 User.last_name,
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (GameSession.date < today, 1),
-                            else_=0
-                        )
-                    ), 0
-                ).label('game_sessions_count'),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (Event.date < today, 1),
-                            else_=0
-                        )
-                    ), 0
-                ).label('events_count')
+                func.coalesce(game_sessions_subquery.c.game_sessions_count, 0).label('game_sessions_count'),
+                func.coalesce(events_subquery.c.events_count, 0).label('events_count')
             )
-            .outerjoin(Registration, User.id == Registration.user_id)
-            .outerjoin(GameSession, Registration.session_id == GameSession.id)
-            .outerjoin(EventRegistration, User.id == EventRegistration.user_id)
-            .outerjoin(Event, EventRegistration.event_id == Event.id)
+            .outerjoin(game_sessions_subquery, User.id == game_sessions_subquery.c.user_id)
+            .outerjoin(events_subquery, User.id == events_subquery.c.user_id)
             .where(
-                (Registration.is_active) | (EventRegistration.is_active)
+                (game_sessions_subquery.c.game_sessions_count.isnot(None)) |
+                (events_subquery.c.events_count.isnot(None))
             )
-            .group_by(User.id)
             .order_by(
-                (func.coalesce(
-                    func.sum(
-                        case(
-                            (GameSession.date < today, 1),
-                            else_=0
-                        )
-                    ), 0
-                ) + func.coalesce(
-                    func.sum(
-                        case(
-                            (Event.date < today, 1),
-                            else_=0
-                        )
-                    ), 0
-                )).desc()
+                (func.coalesce(game_sessions_subquery.c.game_sessions_count, 0) + 
+                 func.coalesce(events_subquery.c.events_count, 0)).desc()
             )
             .limit(10)
         )
