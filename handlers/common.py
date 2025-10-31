@@ -69,7 +69,7 @@ async def show_top_players(message: Message):
             )
             .join(GameSession, Registration.session_id == GameSession.id)
             .where(
-                Registration.is_active == True,
+                Registration.is_active.is_(True),
                 GameSession.date < today
             )
             .group_by(Registration.user_id)
@@ -84,7 +84,7 @@ async def show_top_players(message: Message):
             )
             .join(Event, EventRegistration.event_id == Event.id)
             .where(
-                EventRegistration.is_active == True,
+                EventRegistration.is_active.is_(True),
                 Event.date < today
             )
             .group_by(EventRegistration.user_id)
