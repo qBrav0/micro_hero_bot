@@ -491,73 +491,89 @@ async def show_event_edit_menu(callback: CallbackQuery):
             await callback.answer("❌ Подію не знайдено", show_alert=True)
             return
         
-        text = EventService.format_event_info_for_list(event)
-        text += "\n<b>Оберіть що хочете змінити:</b>"
+        # Отримуємо реєстрації
+        registrations = await get_event_registrations(session, event_id, active_only=True)
+        participants_count = len(registrations)
+        
+        # Формуємо повний текст з усією інформацією
+        text = f"🎪 <b>{event.title}</b>\n\n"
+        text += f"📅 <b>Дата:</b> {format_date(event.date)}\n"
+        text += f"⏰ <b>Час:</b> {format_time(event.start_time)} - {format_time(event.end_time)}\n"
+        text += f"👥 <b>Учасників:</b> {participants_count}/{event.max_participants} "
+        text += f"(мін: {event.min_participants})\n\n"
+        
+        # Додаємо тип оплати
+        payment_type_text = {
+            "included": "✅ Входить в оплату за вхід",
+            "free": "🎁 Безкоштовна",
+            "donate": "💝 Free donate"
+        }
+        text += f"💳 <b>Оплата:</b> {payment_type_text.get(event.payment_type, 'Входить в оплату')}\n\n"
+        
+        # Додаємо опис
+        text += f"📝 <b>Опис:</b>\n{event.description}\n\n"
+        
+        text += "<b>Оберіть що хочете змінити:</b>"
         
         keyboard = get_event_edit_keyboard(event_id)
         
         # Перевіряємо чи є фото події
         has_image = event.image_file_id
+        has_photo = callback.message.photo is not None
         
         if has_image:
-            # Перевіряємо, чи поточне повідомлення містить фото
-            has_photo = callback.message.photo is not None
-            
-            if has_photo:
-                # Якщо вже є фото, оновлюємо caption
+            # Якщо у події є фото, видаляємо старе повідомлення і відправляємо нове з фото
+            try:
+                await callback.message.delete()
+                await callback.bot.send_photo(
+                    chat_id=callback.message.chat.id,
+                    photo=event.image_file_id,
+                    caption=text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Помилка при відправці фото події: {e}")
+                # Якщо не вдалося відправити фото, відправляємо тільки текст
                 try:
-                    await callback.message.edit_caption(
-                        caption=text,
+                    await callback.bot.send_message(
+                        chat_id=callback.message.chat.id,
+                        text=text,
                         reply_markup=keyboard,
                         parse_mode="HTML"
                     )
-                except Exception:
-                    # Якщо не вдалося оновити caption, видаляємо і відправляємо нове
-                    try:
-                        await callback.message.delete()
-                        await callback.message.answer_photo(
-                            photo=event.image_file_id,
-                            caption=text,
-                            reply_markup=keyboard,
-                            parse_mode="HTML"
-                        )
-                    except Exception:
-                        pass
-            else:
-                # Якщо немає фото, видаляємо поточне повідомлення і відправляємо нове фото з підписом
+                except Exception as e2:
+                    logger.error(f"Помилка при відправці тексту події: {e2}")
+        else:
+            # Якщо немає фото події
+            if has_photo:
+                # Якщо поточне повідомлення має фото, видаляємо і відправляємо текст
                 try:
                     await callback.message.delete()
-                    await callback.message.answer_photo(
-                        photo=event.image_file_id,
-                        caption=text,
+                    await callback.bot.send_message(
+                        chat_id=callback.message.chat.id,
+                        text=text,
                         reply_markup=keyboard,
                         parse_mode="HTML"
                     )
                 except Exception as e:
-                    # Якщо не вдалося відправити фото, відправляємо тільки текст
-                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-        else:
-            # Якщо немає фото події, перевіряємо чи поточне повідомлення містить фото
-            has_photo = callback.message.photo is not None
-            
-            if has_photo:
-                # Якщо є фото, але події немає фото, видаляємо і відправляємо текст
-                try:
-                    await callback.message.delete()
-                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-                except Exception:
-                    pass
+                    logger.error(f"Помилка при відправці текстового повідомлення: {e}")
             else:
-                # Відправляємо тільки текст
+                # Якщо поточне повідомлення текстове, просто редагуємо
                 try:
                     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
                 except Exception:
                     # Якщо не вдалося редагувати, видаляємо і відправляємо нове
                     try:
                         await callback.message.delete()
-                        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-                    except Exception:
-                        pass
+                        await callback.bot.send_message(
+                            chat_id=callback.message.chat.id,
+                            text=text,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.error(f"Критична помилка при відправці повідомлення: {e}")
         
         await callback.answer()
 
