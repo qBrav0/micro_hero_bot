@@ -472,36 +472,68 @@ def get_events_list_keyboard(events: List, for_registration: bool = False, page:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def get_event_actions_keyboard(event_id: int, is_registered: bool = False) -> InlineKeyboardMarkup:
-    """Клавіатура дій для події"""
-    keyboard = []
+def get_event_actions_keyboard(event_id: int, is_registered: bool = False, context: str = "schedule", date_str: str = None) -> InlineKeyboardMarkup:
+    """Клавіатура дій для події
     
+    Args:
+        event_id: ID події
+        is_registered: Чи зареєстрований користувач
+        context: Контекст відкриття ('schedule', 'my_registrations', 'date')
+        date_str: Дата у форматі ISO (для повернення в меню дня)
+    """
+    keyboard = []
+
+    # Формуємо callback'и з урахуванням контексту
+    if context == "date" and date_str:
+        register_cb = f"event_register_{event_id}_date_{date_str}"
+        cancel_cb = f"event_cancel_{event_id}_date_{date_str}"
+        participants_cb = f"event_participants_list_{event_id}_date_{date_str}"
+    elif context == "my_registrations":
+        register_cb = f"event_register_{event_id}_my_registrations"
+        cancel_cb = f"event_cancel_{event_id}_my_registrations"
+        participants_cb = f"event_participants_list_{event_id}_my_registrations"
+    else:
+        register_cb = f"event_register_{event_id}"
+        cancel_cb = f"event_cancel_{event_id}"
+        participants_cb = f"event_participants_list_{event_id}"
+
     if is_registered:
         keyboard.append([
             InlineKeyboardButton(
                 text="❌ Скасувати реєстрацію",
-                callback_data=f"event_cancel_{event_id}"
+                callback_data=cancel_cb
             )
         ])
     else:
         keyboard.append([
             InlineKeyboardButton(
                 text="✅ Зареєструватися",
-                callback_data=f"event_register_{event_id}"
+                callback_data=register_cb
             )
         ])
-    
+
     keyboard.append([
         InlineKeyboardButton(
             text="👥 Список учасників",
-            callback_data=f"event_participants_list_{event_id}"
+            callback_data=participants_cb
         )
     ])
     
+    # Кнопка "Назад" залежить від контексту
+    if context == "my_registrations":
+        back_text = "🔙 До моїх записів"
+        back_callback = "back_to_my_registrations"
+    elif context == "date" and date_str:
+        back_text = "🔙 До подій дня"
+        back_callback = f"schedule_date_{date_str}"
+    else:
+        back_text = "🔙 Назад до дат"
+        back_callback = "back_to_events"
+    
     keyboard.append([
         InlineKeyboardButton(
-            text="🔙 Назад до дат",
-            callback_data="back_to_events"
+            text=back_text,
+            callback_data=back_callback
         )
     ])
     

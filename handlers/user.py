@@ -199,9 +199,20 @@ async def show_date_sessions(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("view_event_"))
 async def view_event_details(callback: CallbackQuery):
     """Показати деталі події"""
-    # Парсимо callback_data: view_event_{event_id}_date_{date_str}
+    # Парсимо callback_data: view_event_{event_id} або view_event_{event_id}_date_{date_str} або view_event_{event_id}_my_registrations
     parts = callback.data.split("_")
     event_id = int(parts[2])
+    
+    # Визначаємо контекст
+    context = "schedule"  # за замовчуванням
+    date_str = None
+    
+    if len(parts) > 3:
+        if parts[3] == "date" and len(parts) > 4:
+            context = "date"
+            date_str = parts[4]
+        elif parts[3] == "my" and len(parts) > 4 and parts[4] == "registrations":
+            context = "my_registrations"
     
     user_telegram_id = callback.from_user.id
     
@@ -258,9 +269,9 @@ async def view_event_details(callback: CallbackQuery):
             else:
                 text += "📝 <b>Ви можете зареєструватися на цю подію</b>"
         
-        # Створюємо клавіатуру
+        # Створюємо клавіатуру з контекстом
         from keyboards import get_event_actions_keyboard
-        keyboard = get_event_actions_keyboard(event_id, is_registered=is_registered)
+        keyboard = get_event_actions_keyboard(event_id, is_registered=is_registered, context=context, date_str=date_str)
         
         # Перевіряємо чи є фото події
         has_image = event.image_file_id
@@ -711,7 +722,7 @@ async def unregister_from_game(callback: CallbackQuery):
 
 @router.message(F.text == "🎮 Мої записи")
 async def show_my_registrations(message: Message):
-    """Показати записи користувача"""
+    """Показати записи користувача на ігрові сесії та події"""
     user_id = message.from_user.id
     
     async for db_session in get_session():
@@ -721,52 +732,109 @@ async def show_my_registrations(message: Message):
             await message.answer("Помилка: користувача не знайдено")
             return
         
-        # Отримуємо реєстрації
-        registrations = await RegistrationService.get_user_active_registrations(
+        # Отримуємо реєстрації на ігрові сесії
+        game_registrations = await RegistrationService.get_user_active_registrations(
             db_session, user.id
         )
         
-        # Форматуємо список
-        text = await RegistrationService.format_registrations_list(db_session, registrations)
+        # Отримуємо реєстрації на події
+        from services import EventService
+        event_registrations = await EventService.get_user_registrations(db_session, user.id)
         
-        # Фільтруємо тільки майбутні сесії для кнопок
+        # Фільтруємо тільки майбутні записи
         from sqlmodel import select
-        from database.models import GameSession
+        from database.models import GameSession, Event
         from datetime import date
         
         today = date.today()
-        future_registrations = []
         
-        for reg in registrations:
+        # Обробляємо ігрові сесії
+        future_game_items = []
+        for reg in game_registrations:
             result = await db_session.execute(
                 select(GameSession).where(GameSession.id == reg.session_id)
             )
             game_session = result.scalar_one_or_none()
             
             if game_session and game_session.date >= today:
-                # Перевіряємо, чи гра активна
                 game = await get_game(db_session, game_session.game_id)
                 if game and game.is_active:
-                    future_registrations.append(reg)
+                    future_game_items.append({
+                        'type': 'game',
+                        'date': game_session.date,
+                        'time': game_session.start_time,
+                        'session_id': game_session.id,
+                        'name': game.name,
+                        'registration': reg
+                    })
         
-        if future_registrations:
-            # Створюємо клавіатуру тільки для майбутніх сесій з контекстом
-            keyboard = []
-            for reg in future_registrations:
-                keyboard.append([{
-                    "text": f"Переглянути сесію #{reg.session_id}",
-                    "callback_data": f"view_session_{reg.session_id}_my_registrations"
-                }])
+        # Обробляємо події
+        future_event_items = []
+        for reg in event_registrations:
+            result = await db_session.execute(
+                select(Event).where(Event.id == reg.event_id)
+            )
+            event = result.scalar_one_or_none()
             
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=btn["text"], callback_data=btn["callback_data"])]
-                for row in keyboard for btn in row
-            ])
-            
-            await message.answer(text, reply_markup=kb, parse_mode="HTML")
-        else:
+            if event and event.date >= today:
+                future_event_items.append({
+                    'type': 'event',
+                    'date': event.date,
+                    'time': event.start_time,
+                    'event_id': event.id,
+                    'name': event.title,
+                    'registration': reg
+                })
+        
+        # Об'єднуємо та сортуємо за датою і часом
+        all_items = future_game_items + future_event_items
+        all_items.sort(key=lambda x: (x['date'], x['time']))
+        
+        # Формуємо текст
+        if not all_items:
+            text = "🎮 <b>Мої записи</b>\n\n"
+            text += "У вас немає активних записів на ігри та події.\n\n"
+            text += "📅 Перегляньте розклад і запишіться на цікаві вам заходи!"
             await message.answer(text, parse_mode="HTML")
+            return
+        
+        text = "🎮 <b>Мої записи</b>\n\n"
+        text += "Ваші майбутні ігри та події:\n\n"
+        
+        # Групуємо по датах для відображення
+        current_date = None
+        for item in all_items:
+            if current_date != item['date']:
+                current_date = item['date']
+                text += f"\n📅 <b>{format_date(current_date)}</b>\n"
+            
+            if item['type'] == 'game':
+                text += f"🎮 {item['name']} • {format_time(item['time'])}\n"
+            else:  # event
+                text += f"🎪 {item['name']} • {format_time(item['time'])}\n"
+        
+        # Створюємо клавіатуру
+        keyboard = []
+        for item in all_items:
+            if item['type'] == 'game':
+                button_text = f"🎮 {item['name']}"
+                callback_data = f"view_session_{item['session_id']}_my_registrations"
+            else:  # event
+                button_text = f"🎪 {item['name']}"
+                callback_data = f"view_event_{item['event_id']}_my_registrations"
+            
+            keyboard.append([{
+                "text": button_text,
+                "callback_data": callback_data
+            }])
+        
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=btn["text"], callback_data=btn["callback_data"])]
+            for row in keyboard for btn in row
+        ])
+        
+        await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("players_list_"))
@@ -985,8 +1053,18 @@ async def back_to_my_registrations(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("event_register_"))
 async def register_for_event_from_schedule(callback: CallbackQuery):
-    """Зареєструватися на подію з розкладу"""
-    event_id = int(callback.data.split("_")[-1])
+    """Зареєструватися на подію"""
+    parts = callback.data.split("_")
+    event_id = int(parts[2])
+    # Контекст: event_register_{id} | event_register_{id}_date_{date_str} | event_register_{id}_my_registrations
+    context = "schedule"
+    date_str = None
+    if len(parts) > 3:
+        if parts[3] == "date" and len(parts) > 4:
+            context = "date"
+            date_str = parts[4]
+        elif parts[3] == "my" and len(parts) > 4 and parts[4] == "registrations":
+            context = "my_registrations"
     user_telegram_id = callback.from_user.id
     
     async for session in get_session():
@@ -1019,16 +1097,42 @@ async def register_for_event_from_schedule(callback: CallbackQuery):
                 bot, session, event, user
             )
             
-            # Оновлюємо відображення події з новими кнопками
-            await view_event_details(callback)
+            # Оновлюємо відображення події з новими кнопками, зберігаючи контекст
+            from aiogram.types import CallbackQuery as CQ
+            if context == "date" and date_str:
+                new_data = f"view_event_{event_id}_date_{date_str}"
+            elif context == "my_registrations":
+                new_data = f"view_event_{event_id}_my_registrations"
+            else:
+                new_data = f"view_event_{event_id}"
+            new_callback = CQ(
+                id=callback.id,
+                from_user=callback.from_user,
+                message=callback.message,
+                chat_instance=callback.chat_instance,
+                data=new_data,
+                inline_message_id=None
+            )
+            new_callback._bot = callback.bot
+            await view_event_details(new_callback)
         else:
             await callback.answer("❌ Не вдалося зареєструватися. Можливо, місця закінчилися.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("event_cancel_"))
 async def cancel_event_registration_from_schedule(callback: CallbackQuery):
-    """Скасувати реєстрацію на подію з розкладу"""
-    event_id = int(callback.data.split("_")[-1])
+    """Скасувати реєстрацію на подію"""
+    parts = callback.data.split("_")
+    event_id = int(parts[2])
+    # Контекст: event_cancel_{id} | event_cancel_{id}_date_{date_str} | event_cancel_{id}_my_registrations
+    context = "schedule"
+    date_str = None
+    if len(parts) > 3:
+        if parts[3] == "date" and len(parts) > 4:
+            context = "date"
+            date_str = parts[4]
+        elif parts[3] == "my" and len(parts) > 4 and parts[4] == "registrations":
+            context = "my_registrations"
     user_telegram_id = callback.from_user.id
     
     async for session in get_session():
@@ -1057,8 +1161,24 @@ async def cancel_event_registration_from_schedule(callback: CallbackQuery):
                 bot, session, event, user
             )
             
-            # Оновлюємо відображення події з новими кнопками
-            await view_event_details(callback)
+            # Оновлюємо відображення події з новими кнопками, зберігаючи контекст
+            from aiogram.types import CallbackQuery as CQ
+            if context == "date" and date_str:
+                new_data = f"view_event_{event_id}_date_{date_str}"
+            elif context == "my_registrations":
+                new_data = f"view_event_{event_id}_my_registrations"
+            else:
+                new_data = f"view_event_{event_id}"
+            new_callback = CQ(
+                id=callback.id,
+                from_user=callback.from_user,
+                message=callback.message,
+                chat_instance=callback.chat_instance,
+                data=new_data,
+                inline_message_id=None
+            )
+            new_callback._bot = callback.bot
+            await view_event_details(new_callback)
         else:
             await callback.answer("❌ Не вдалося скасувати реєстрацію", show_alert=True)
 
@@ -1066,7 +1186,17 @@ async def cancel_event_registration_from_schedule(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("event_participants_list_"))
 async def show_event_participants_list_from_schedule(callback: CallbackQuery):
     """Показати список учасників події з розкладу"""
-    event_id = int(callback.data.split("_")[-1])
+    parts = callback.data.split("_")
+    event_id = int(parts[3])
+    # Контекст: event_participants_list_{id} | ..._date_{date_str} | ..._my_registrations
+    context = "schedule"
+    date_str = None
+    if len(parts) > 4:
+        if parts[4] == "date" and len(parts) > 5:
+            context = "date"
+            date_str = parts[5]
+        elif parts[4] == "my" and len(parts) > 5 and parts[5] == "registrations":
+            context = "my_registrations"
     
     async for db_session in get_session():
         # Отримуємо подію
@@ -1093,9 +1223,14 @@ async def show_event_participants_list_from_schedule(callback: CallbackQuery):
         
         if not registrations:
             text += "Поки що ніхто не зареєстрований на цю подію."
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"view_event_{event_id}")]
-            ])
+            # Кнопка назад зі збереженням контексту
+            if context == "date" and date_str:
+                back_cb = f"view_event_{event_id}_date_{date_str}"
+            elif context == "my_registrations":
+                back_cb = f"view_event_{event_id}_my_registrations"
+            else:
+                back_cb = f"view_event_{event_id}"
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=back_cb)]])
         else:
             text += f"<b>Зареєстровано: {len(registrations)}/{event.max_participants}</b>\n\n"
             
@@ -1116,9 +1251,13 @@ async def show_event_participants_list_from_schedule(callback: CallbackQuery):
                     else:
                         text += f"{i}. {participant_name}\n"
             
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"view_event_{event_id}")]
-            ])
+            if context == "date" and date_str:
+                back_cb = f"view_event_{event_id}_date_{date_str}"
+            elif context == "my_registrations":
+                back_cb = f"view_event_{event_id}_my_registrations"
+            else:
+                back_cb = f"view_event_{event_id}"
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=back_cb)]])
         
         # Перевіряємо чи є фото в повідомленні
         has_photo = callback.message.photo is not None
@@ -1193,37 +1332,3 @@ async def back_to_events(callback: CallbackQuery):
 
 
 
-@router.message(F.text == "📋 Мої події")
-async def show_my_events(message: Message):
-    """Показати події користувача"""
-    user_telegram_id = message.from_user.id
-    
-    async for session in get_session():
-        from database import get_user_by_telegram_id
-        from services import EventService
-        
-        # Отримуємо користувача
-        user = await get_user_by_telegram_id(session, user_telegram_id)
-        if not user:
-            await message.answer("❌ Помилка: користувача не знайдено")
-            return
-        
-        # Отримуємо реєстрації користувача
-        registrations = await EventService.get_user_registrations(session, user.id)
-        
-        if not registrations:
-            await message.answer("📋 У вас немає активних реєстрацій на події.")
-            return
-        
-        text = "📋 <b>Ваші події:</b>\n\n"
-        
-        for reg in registrations:
-            event = await EventService.get_event_by_id(session, reg.event_id)
-            if event:
-                text += f"🎪 <b>{event.title}</b>\n"
-                text += f"📅 {format_date(event.date)} | ⏰ {format_time(event.start_time)} - {format_time(event.end_time)}\n\n"
-        
-        from keyboards import get_my_event_registrations_keyboard
-        keyboard = get_my_event_registrations_keyboard(registrations)
-        
-        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
