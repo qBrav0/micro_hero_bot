@@ -29,6 +29,9 @@ class ReminderService:
         5. Якщо час нагадування настав (зараз = start_time - reminder_hours), відправляємо нагадування
         """
         try:
+            # Спочатку очищаємо старі записи про відправлені нагадування (старіші ніж 7 днів)
+            await ReminderService._cleanup_old_reminders(db_session)
+            
             # Отримуємо користувачів з увімкненими нагадуваннями
             result = await db_session.execute(
                 select(User).where(
@@ -366,4 +369,34 @@ class ReminderService:
             
         except Exception as e:
             logger.error(f"Помилка при відправці нагадування про події користувачу {user.telegram_id}: {e}")
+    
+    @staticmethod
+    async def _cleanup_old_reminders(db_session: AsyncSession):
+        """Видалити старі записи про відправлені нагадування (старіші ніж 7 днів від поточної дати)"""
+        try:
+            from sqlalchemy import delete
+            
+            current_date = date.today()
+            cleanup_date = current_date - timedelta(days=7)
+            
+            # Видаляємо старі нагадування про ігрові сесії
+            result = await db_session.execute(
+                delete(ReminderSent).where(ReminderSent.session_date < cleanup_date)
+            )
+            deleted_count = result.rowcount
+            if deleted_count > 0:
+                await db_session.commit()
+                logger.info(f"Видалено {deleted_count} старих записів про нагадування ігор")
+            
+            # Видаляємо старі нагадування про події
+            result = await db_session.execute(
+                delete(EventReminderSent).where(EventReminderSent.event_date < cleanup_date)
+            )
+            deleted_count = result.rowcount
+            if deleted_count > 0:
+                await db_session.commit()
+                logger.info(f"Видалено {deleted_count} старих записів про нагадування подій")
+                
+        except Exception as e:
+            logger.error(f"Помилка при очищенні старих нагадувань: {e}")
 

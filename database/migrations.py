@@ -34,6 +34,9 @@ async def run_migrations(engine: AsyncEngine):
             # Міграція 6: Створення таблиць для подій
             await migrate_create_events_tables(conn)
             
+            # Міграція 7: Створення таблиці для відстеження відправлених нагадувань про події
+            await migrate_create_event_reminder_sent_table(conn)
+            
             logger.info("✅ Всі міграції виконано успішно")
             
         except Exception as e:
@@ -538,5 +541,72 @@ async def migrate_create_events_tables(conn):
         
     except Exception as e:
         logger.error(f"❌ Помилка при створенні таблиць подій: {e}")
+        raise
+
+
+async def migrate_create_event_reminder_sent_table(conn):
+    """
+    Створює таблицю eventremindersent для відстеження відправлених нагадувань про події
+    """
+    try:
+        # Визначаємо тип БД
+        db_name = conn.engine.dialect.name
+        
+        # Перевіряємо чи існує таблиця eventremindersent
+        if db_name == 'sqlite':
+            result = await conn.execute(text(
+                """
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='eventremindersent';
+                """
+            ))
+        else:  # PostgreSQL
+            result = await conn.execute(text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'eventremindersent'
+                );
+                """
+            ))
+        
+        table_exists = result.scalar()
+        
+        if table_exists:
+            logger.info("ℹ️ Таблиця eventremindersent вже існує")
+            return
+        
+        logger.info("🔄 Створення таблиці eventremindersent")
+        
+        # Створюємо таблицю
+        if db_name == 'sqlite':
+            await conn.execute(text(
+                """
+                CREATE TABLE eventremindersent (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    event_date DATE NOT NULL,
+                    sent_at DATETIME NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES user (id)
+                );
+                """
+            ))
+        else:  # PostgreSQL
+            await conn.execute(text(
+                """
+                CREATE TABLE eventremindersent (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    event_date DATE NOT NULL,
+                    sent_at TIMESTAMP NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES "user" (id)
+                );
+                """
+            ))
+        
+        logger.info("✅ Таблиця eventremindersent успішно створена")
+        
+    except Exception as e:
+        logger.error(f"❌ Помилка при створенні таблиці eventremindersent: {e}")
         raise
 
