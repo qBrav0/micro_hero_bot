@@ -3,19 +3,18 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from datetime import date
-import os
 import logging
 
 from database import get_session
 from services import EventService
 from keyboards import (
-    get_admin_events_menu, get_events_list_keyboard, get_event_actions_keyboard,
-    get_event_edit_keyboard, get_date_selection_keyboard, get_confirmation_keyboard
+    get_admin_events_menu, get_events_list_keyboard,
+    get_event_edit_keyboard, get_date_selection_keyboard
 )
 from utils.decorators import admin_only
 from utils.validators import validate_time, validate_date, validate_players_count, normalize_time
 from utils.helpers import format_date, format_time
-from database.crud import get_event, get_event_registrations
+from database.crud import get_event_registrations
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -578,149 +577,6 @@ async def show_event_edit_menu(callback: CallbackQuery):
         await callback.answer()
 
 
-@router.message(F.text == "📅 Переглянути розклад подій")
-@admin_only
-async def view_admin_events_schedule(message: Message):
-    """Переглянути розклад подій (адмін) з можливістю видалення"""
-    async for db_session in get_session():
-        events = await EventService.get_upcoming_schedule(db_session, days=14)
-        
-        if not events:
-            await message.answer("📅 На найближчі 14 днів немає запланованих подій.")
-            return
-        
-        text = "🎪 <b>Розклад подій (Адмін)</b>\n\n"
-        text += "Оберіть подію для управління:"
-        
-        # Створюємо клавіатуру з подіями
-        keyboard = []
-        
-        for event in events:
-            registrations = await get_event_registrations(db_session, event.id, active_only=True)
-            participants_count = len(registrations)
-            
-            button_text = f"🎪 {event.title} | {format_date(event.date)} {format_time(event.start_time)} | {participants_count}/{event.max_participants}"
-            
-            keyboard.append([
-                InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=f"admin_manage_event_{event.id}"
-                )
-            ])
-        
-        kb = InlineKeyboardMarkup(inline_keyboard=keyboard)
-        await message.answer(text, reply_markup=kb, parse_mode="HTML")
-
-
-@router.callback_query(F.data.startswith("admin_manage_event_"))
-async def admin_manage_event(callback: CallbackQuery):
-    """Управління подією (адмін)"""
-    event_id = int(callback.data.split("_")[-1])
-    
-    async for db_session in get_session():
-        event = await EventService.get_event_by_id(db_session, event_id)
-        
-        if not event:
-            await callback.answer("❌ Подію не знайдено", show_alert=True)
-            return
-        
-        registrations = await get_event_registrations(db_session, event_id, active_only=True)
-        
-        text = f"🎪 <b>{event.title}</b>\n\n"
-        text += f"📅 <b>Дата:</b> {format_date(event.date)}\n"
-        text += f"⏰ <b>Час:</b> {format_time(event.start_time)} - {format_time(event.end_time)}\n"
-        text += f"👥 <b>Учасників:</b> {len(registrations)}/{event.max_participants}\n\n"
-        
-        # Додаємо тип оплати
-        payment_type_text = {
-            "included": "✅ Входить в оплату за вхід",
-            "free": "🎁 Безкоштовна",
-            "donate": "💝 Free donate"
-        }
-        text += f"💳 <b>Оплата:</b> {payment_type_text.get(event.payment_type, 'Входить в оплату')}\n\n"
-        
-        # Додаємо опис
-        text += f"📝 <b>Опис:</b>\n{event.description}\n\n"
-        
-        text += "<b>Що ви хочете зробити?</b>"
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="👥 Список учасників",
-                    callback_data=f"admin_participants_list_{event_id}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🗑️ Видалити подію",
-                    callback_data=f"admin_delete_event_{event_id}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔙 Назад до розкладу",
-                    callback_data="admin_back_events_schedule"
-                )
-            ]
-        ])
-        
-        # Перевіряємо чи є зображення події
-        has_image = event.image_file_id
-        
-        if has_image:
-            # Перевіряємо, чи поточне повідомлення містить фото
-            has_photo = callback.message.photo is not None
-            
-            if has_photo:
-                # Якщо вже є фото, оновлюємо caption
-                try:
-                    await callback.message.edit_caption(
-                        caption=text,
-                        reply_markup=keyboard,
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    # Якщо не вдалося оновити caption, видаляємо і відправляємо нове
-                    try:
-                        await callback.message.delete()
-                        await callback.message.answer_photo(
-                            photo=event.image_file_id,
-                            caption=text,
-                            reply_markup=keyboard,
-                            parse_mode="HTML"
-                        )
-                    except Exception:
-                        # Якщо не вдалося відправити фото, відправляємо текст
-                        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-            else:
-                # Якщо немає фото, відправляємо фото з caption
-                try:
-                    await callback.message.delete()
-                    await callback.message.answer_photo(
-                        photo=event.image_file_id,
-                        caption=text,
-                        reply_markup=keyboard,
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    # Якщо не вдалося відправити фото, відправляємо текст
-                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-        else:
-            # Якщо немає зображення, просто редагуємо текст
-            try:
-                await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-            except Exception:
-                # Якщо не вдалося редагувати, видаляємо і відправляємо нове
-                try:
-                    await callback.message.delete()
-                    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-                except Exception:
-                    pass
-        
-        await callback.answer()
-
-
 @router.callback_query(F.data.startswith("admin_participants_list_"))
 async def admin_show_participants_list(callback: CallbackQuery):
     """Показати список учасників події для адміна з можливістю кіку"""
@@ -751,7 +607,7 @@ async def admin_show_participants_list(callback: CallbackQuery):
         if not registrations:
             text += "Поки що ніхто не зареєстрований на цю подію."
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"admin_manage_event_{event_id}")]
+                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"admin_event_{event_id}")]
             ])
         else:
             text += f"<b>Зареєстровано: {len(registrations)}/{event.max_participants}</b>\n\n"
@@ -784,7 +640,7 @@ async def admin_show_participants_list(callback: CallbackQuery):
             
             # Додаємо кнопку назад
             keyboard_buttons.append([
-                InlineKeyboardButton(text="🔙 Назад", callback_data=f"admin_manage_event_{event_id}")
+                InlineKeyboardButton(text="🔙 Назад", callback_data=f"admin_event_{event_id}")
             ])
             
             keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
@@ -991,9 +847,15 @@ async def admin_confirm_kick_participant(callback: CallbackQuery, state: FSMCont
         except Exception as e:
             print(f"Помилка надсилання повідомлення учаснику: {e}")
         
+        # Додаємо кнопку назад до списку учасників
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад до списку учасників", callback_data=f"admin_participants_list_{event_id}")]
+        ])
+        
         await callback.message.edit_text(
             f"✅ Учасника <b>{participant_name}</b> успішно кікнуто з події!\n\n"
             f"📨 Повідомлення надіслано учаснику.",
+            reply_markup=keyboard,
             parse_mode="HTML"
         )
         
@@ -1005,127 +867,20 @@ async def admin_confirm_kick_participant(callback: CallbackQuery, state: FSMCont
 @admin_only
 async def admin_cancel_kick_participant(callback: CallbackQuery, state: FSMContext):
     """Скасувати кік учасника з події"""
-    await callback.message.edit_text("❌ Кік учасника скасовано.")
+    data = await state.get_data()
+    event_id = data.get('event_id')
+    
+    # Додаємо кнопку назад до списку учасників
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад до списку учасників", callback_data=f"admin_participants_list_{event_id}")]
+    ]) if event_id else None
+    
+    await callback.message.edit_text(
+        "❌ Кік учасника скасовано.",
+        reply_markup=keyboard
+    )
     await state.clear()
     await callback.answer()
-
-
-@router.callback_query(F.data == "admin_back_events_schedule")
-async def admin_back_events_schedule(callback: CallbackQuery):
-    """Повернутися до розкладу подій"""
-    async for db_session in get_session():
-        events = await EventService.get_upcoming_schedule(db_session, days=14)
-        
-        if not events:
-            await callback.message.edit_text("📅 На найближчі 14 днів немає запланованих подій.")
-            await callback.answer()
-            return
-        
-        text = "🎪 <b>Розклад подій (Адмін)</b>\n\n"
-        text += "Оберіть подію для управління:"
-        
-        # Створюємо клавіатуру з подіями
-        keyboard = []
-        
-        for event in events:
-            registrations = await get_event_registrations(db_session, event.id, active_only=True)
-            participants_count = len(registrations)
-            
-            button_text = f"🎪 {event.title} | {format_date(event.date)} {format_time(event.start_time)} | {participants_count}/{event.max_participants}"
-            
-            keyboard.append([
-                InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=f"admin_manage_event_{event.id}"
-                )
-            ])
-        
-        kb = InlineKeyboardMarkup(inline_keyboard=keyboard)
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-        await callback.answer()
-
-
-@router.callback_query(F.data.startswith("admin_delete_event_"))
-async def admin_confirm_delete_event(callback: CallbackQuery):
-    """Підтвердити видалення події"""
-    event_id = int(callback.data.split("_")[-1])
-    
-    async for db_session in get_session():
-        event = await EventService.get_event_by_id(db_session, event_id)
-        
-        if not event:
-            await callback.answer("❌ Подію не знайдено", show_alert=True)
-            return
-        
-        text = f"🗑️ <b>Підтвердження видалення</b>\n\n"
-        text += f"🎪 Подія: <b>{event.title}</b>\n"
-        text += f"📅 Дата: {format_date(event.date)}\n"
-        text += f"⏰ Час: {format_time(event.start_time)} - {format_time(event.end_time)}\n\n"
-        text += "⚠️ <b>Ви впевнені, що хочете видалити цю подію?</b>\n\n"
-        text += "❌ Цю дію неможливо скасувати!"
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Так, видалити", callback_data=f"delete_event_confirmed_{event_id}"),
-                InlineKeyboardButton(text="❌ Скасувати", callback_data=f"admin_manage_event_{event_id}")
-            ]
-        ])
-        
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-        await callback.answer()
-
-
-@router.callback_query(F.data.startswith("delete_event_confirmed_"))
-async def admin_delete_event_confirmed(callback: CallbackQuery):
-    """Видалити подію після підтвердження"""
-    event_id = int(callback.data.split("_")[-1])
-    
-    async for db_session in get_session():
-        event = await EventService.get_event_by_id(db_session, event_id)
-        
-        if not event:
-            await callback.answer("❌ Подію не знайдено", show_alert=True)
-            return
-        
-        # Отримуємо всіх зареєстрованих користувачів
-        registrations = await get_event_registrations(db_session, event_id, active_only=True)
-        
-        # Видаляємо подію
-        await delete_event(db_session, event_id)
-        
-        # Надсилаємо повідомлення всім зареєстрованим користувачам
-        if registrations:
-            from sqlmodel import select
-            from database.models import User
-            
-            cancel_message = f"❌ <b>Подію скасовано</b>\n\n"
-            cancel_message += f"🎪 Подія: <b>{event.title}</b>\n"
-            cancel_message += f"📅 Дата: {format_date(event.date)}\n"
-            cancel_message += f"⏰ Час: {format_time(event.start_time)}\n\n"
-            cancel_message += "Подію було видалено адміністратором."
-            
-            for reg in registrations:
-                try:
-                    result = await db_session.execute(
-                        select(User).where(User.id == reg.user_id)
-                    )
-                    user = result.scalar_one_or_none()
-                    
-                    if user:
-                        await callback.bot.send_message(
-                            chat_id=user.telegram_id,
-                            text=cancel_message,
-                            parse_mode="HTML"
-                        )
-                except Exception as e:
-                    print(f"Помилка надсилання повідомлення користувачу {reg.user_id}: {e}")
-        
-        await callback.message.edit_text(
-            f"✅ Подію <b>{event.title}</b> успішно видалено!\n\n"
-            f"📨 Повідомлення надіслано всім зареєстрованим користувачам.",
-            parse_mode="HTML"
-        )
-        await callback.answer()
 
 
 # ===== КОРИСТУВАЧСЬКІ ОБРОБНИКИ =====
@@ -1702,18 +1457,68 @@ async def delete_event_confirmed(callback: CallbackQuery):
     event_id = int(callback.data.split("_")[-1])
     
     async for session in get_session():
+        # Отримуємо інформацію про подію перед видаленням
+        event = await EventService.get_event_by_id(session, event_id)
+        
+        if not event:
+            await callback.answer("❌ Подію не знайдено", show_alert=True)
+            return
+        
+        # Отримуємо всіх зареєстрованих користувачів перед видаленням
+        registrations = await get_event_registrations(session, event_id, active_only=True)
+        
+        # Видаляємо подію
         success = await EventService.delete_event(session, event_id)
+        
         if success:
+            # Надсилаємо повідомлення всім зареєстрованим користувачам
+            if registrations:
+                from sqlmodel import select
+                from database.models import User
+                
+                cancel_message = f"❌ <b>Подію скасовано</b>\n\n"
+                cancel_message += f"🎪 Подія: <b>{event.title}</b>\n"
+                cancel_message += f"📅 Дата: {format_date(event.date)}\n"
+                cancel_message += f"⏰ Час: {format_time(event.start_time)}\n\n"
+                cancel_message += "Подію було видалено адміністратором."
+                
+                for reg in registrations:
+                    try:
+                        result = await session.execute(
+                            select(User).where(User.id == reg.user_id)
+                        )
+                        user = result.scalar_one_or_none()
+                        
+                        if user:
+                            await callback.bot.send_message(
+                                chat_id=user.telegram_id,
+                                text=cancel_message,
+                                parse_mode="HTML"
+                            )
+                    except Exception as e:
+                        print(f"Помилка надсилання повідомлення користувачу {reg.user_id}: {e}")
+            
+            # Формуємо повідомлення про успішне видалення
+            success_message = f"✅ Подію <b>{event.title}</b> успішно видалено!"
+            if registrations:
+                success_message += f"\n\n📨 Повідомлення надіслано {len(registrations)} користувачам."
+            
             # Перевіряємо чи є фото в попередньому повідомленні
             has_photo = callback.message.photo is not None and len(callback.message.photo) > 0
             
             if has_photo:
                 # Якщо попереднє повідомлення містило фото, видаляємо його і відправляємо нове
                 await callback.message.delete()
-                await callback.message.answer("✅ Подію успішно видалено!")
+                await callback.message.answer(
+                    success_message,
+                    parse_mode="HTML"
+                )
             else:
                 # Якщо попереднє повідомлення було текстовим, редагуємо його
-                await callback.message.edit_text("✅ Подію успішно видалено!")
+                await callback.message.edit_text(
+                    success_message,
+                    parse_mode="HTML"
+                )
             
             await callback.answer()
         else:
