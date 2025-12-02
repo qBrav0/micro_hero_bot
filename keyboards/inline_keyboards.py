@@ -636,3 +636,33 @@ def get_my_event_registrations_keyboard(registrations: List) -> InlineKeyboardMa
     ])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+# ===== SECRET SANTA KEYBOARDS =====
+
+def get_secret_santa_main_keyboard() -> InlineKeyboardMarkup:
+    """Клавіатура для головного меню Таємного Санти"""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text="🎁 Взяти участь",
+                callback_data="secret_santa_participate"
+            )
+        ]
+    ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_secret_santa_registered_keyboard() -> InlineKeyboardMarkup:
+    """Клавіатура для зареєстрованого учасника"""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text="✅ Ви зареєстровані!",
+                callback_data="secret_santa_already_registered"
+            )
+        ]
+    ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)

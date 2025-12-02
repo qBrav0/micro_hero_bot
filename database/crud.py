@@ -4,7 +4,7 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, or_
 
-from .models import User, Game, GameSession, Registration, DayPricing, ClubSettings, Event, EventRegistration
+from .models import User, Game, GameSession, Registration, DayPricing, ClubSettings, Event, EventRegistration, SecretSanta
 
 
 # ===== USER CRUD =====
@@ -718,3 +718,66 @@ async def get_top_users_by_attended_events(session: AsyncSession, limit: int = 1
     )
     
     return result.all()
+
+
+# ===== SECRET SANTA CRUD =====
+
+async def create_secret_santa_participant(session: AsyncSession, user_id: int, wishes: str) -> SecretSanta:
+    """Зареєструвати учасника Таємного Санти"""
+    participant = SecretSanta(
+        user_id=user_id,
+        wishes=wishes
+    )
+    session.add(participant)
+    await session.commit()
+    await session.refresh(participant)
+    return participant
+
+
+async def get_secret_santa_participant(session: AsyncSession, user_id: int) -> Optional[SecretSanta]:
+    """Отримати учасника Таємного Санти за user_id"""
+    result = await session.execute(
+        select(SecretSanta).where(SecretSanta.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_all_secret_santa_participants(session: AsyncSession) -> List[SecretSanta]:
+    """Отримати всіх учасників Таємного Санти"""
+    result = await session.execute(select(SecretSanta))
+    return list(result.scalars().all())
+
+
+async def update_secret_santa_assignment(session: AsyncSession, user_id: int, assigned_to: int) -> Optional[SecretSanta]:
+    """Оновити призначення кому дарувати подарунок"""
+    result = await session.execute(
+        select(SecretSanta).where(SecretSanta.user_id == user_id)
+    )
+    participant = result.scalar_one_or_none()
+    
+    if participant:
+        participant.assigned_to = assigned_to
+        participant.draw_completed = True
+        session.add(participant)
+        await session.commit()
+        await session.refresh(participant)
+    
+    return participant
+
+
+async def check_secret_santa_registered(session: AsyncSession, user_id: int) -> bool:
+    """Перевірити, чи користувач зареєстрований в Таємному Санті"""
+    participant = await get_secret_santa_participant(session, user_id)
+    return participant is not None
+
+
+async def delete_all_secret_santa_participants(session: AsyncSession) -> bool:
+    """Видалити всіх учасників Таємного Санти (для скидання)"""
+    result = await session.execute(select(SecretSanta))
+    participants = result.scalars().all()
+    
+    for participant in participants:
+        await session.delete(participant)
+    
+    await session.commit()
+    return True

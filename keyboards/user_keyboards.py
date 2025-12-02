@@ -9,6 +9,7 @@ def get_main_menu(is_admin: bool = False) -> ReplyKeyboardMarkup:
         [KeyboardButton(text="🎲 База ігор")],
         [KeyboardButton(text="🔔 Налаштування сповіщень")],
         [KeyboardButton(text="🏆 Топ-10 ігротеки")],
+        [KeyboardButton(text="🎅 Таємний Санта")],
         [KeyboardButton(text="ℹ️ Про ігротеку"), KeyboardButton(text="💳 Оплата")]
     ]
     

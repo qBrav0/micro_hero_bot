@@ -4,5 +4,6 @@ from .admin import router as admin_router
 from .common import router as common_router
 from .reminder import router as reminder_router
 from .event import router as event_router
+from .secret_santa import router as secret_santa_router
 
-__all__ = ["start_router", "user_router", "admin_router", "common_router", "reminder_router", "event_router"]
+__all__ = ["start_router", "user_router", "admin_router", "common_router", "reminder_router", "event_router", "secret_santa_router"]

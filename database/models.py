@@ -110,3 +110,13 @@ class ClubSettings(SQLModel, table=True):
     setting_key: str = Field(unique=True, index=True)
     setting_value: Optional[str] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SecretSanta(SQLModel, table=True):
+    """Модель для Таємного Санти"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", unique=True)
+    wishes: str  # Побажання користувача
+    assigned_to: Optional[int] = Field(default=None, foreign_key="user.id")  # Кому дарує подарунок
+    registered_at: datetime = Field(default_factory=datetime.utcnow)
+    draw_completed: bool = Field(default=False)  # Чи відбулося жеребкування
