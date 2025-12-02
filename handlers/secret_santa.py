@@ -1,9 +1,10 @@
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
+import logging
 
 from database import get_session, get_user_by_telegram_id
 from database.crud import (
@@ -17,9 +18,10 @@ from keyboards.inline_keyboards import (
     get_secret_santa_registered_keyboard
 )
 from keyboards import get_main_menu
-from config import ADMIN_IDS
+from config import ADMIN_IDS, BOT_TOKEN
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 class SecretSantaStates(StatesGroup):
@@ -149,6 +151,14 @@ async def process_wishes(message: Message, state: FSMContext):
                 "Повертайтесь до головного меню:",
                 reply_markup=get_main_menu(is_admin=is_admin)
             )
+            
+            # Відправляємо сповіщення адмінам
+            await notify_admins_about_registration(
+                user_first_name=message.from_user.first_name,
+                user_last_name=message.from_user.last_name,
+                username=message.from_user.username
+            )
+            
             await state.clear()
             
         except Exception as e:
@@ -163,6 +173,86 @@ async def process_wishes(message: Message, state: FSMContext):
 async def already_registered(callback: CallbackQuery):
     """Обробка натискання на кнопку для вже зареєстрованих"""
     await callback.answer("Ви вже зареєстровані! 🎁", show_alert=True)
+
+
+@router.message(F.text == "🎅 Таємний Санта (адмін)")
+async def show_secret_santa_admin(message: Message):
+    """Показати адмін-панель Таємного Санти"""
+    user_id = message.from_user.id
+    
+    # Перевіряємо чи користувач адмін
+    if user_id not in ADMIN_IDS:
+        await message.answer("❌ У вас немає доступу до цієї функції")
+        return
+    
+    async for session in get_session():
+        # Отримуємо всіх учасників
+        participants = await get_all_secret_santa_participants(session)
+        
+        if not participants:
+            text = "🎅 <b>Таємний Санта - Адмін-панель</b>\n\n"
+            text += "📋 Поки що немає зареєстрованих учасників."
+            await message.answer(text, parse_mode="HTML")
+            return
+        
+        # Формуємо список учасників
+        text = "🎅 <b>Таємний Санта - Адмін-панель</b>\n\n"
+        text += f"👥 <b>Всього учасників:</b> {len(participants)}\n\n"
+        text += "📋 <b>Список учасників:</b>\n\n"
+        
+        from database.models import User
+        from sqlmodel import select
+        
+        for idx, participant in enumerate(participants, 1):
+            # Отримуємо інформацію про користувача
+            result = await session.execute(
+                select(User).where(User.id == participant.user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if user:
+                username = f"@{user.username}" if user.username else "немає username"
+                full_name = user.first_name
+                if user.last_name:
+                    full_name += f" {user.last_name}"
+                
+                text += f"{idx}. <b>{full_name}</b> ({username})\n"
+                text += f"   📝 Побажання: {participant.wishes}\n"
+                text += f"   📅 Зареєстрований: {participant.registered_at.strftime('%d.%m.%Y %H:%M')}\n\n"
+        
+        await message.answer(text, parse_mode="HTML")
+
+
+async def notify_admins_about_registration(user_first_name: str, user_last_name: str, username: str):
+    """Відправити сповіщення адмінам про нову реєстрацію"""
+    try:
+        bot = Bot(token=BOT_TOKEN)
+        
+        full_name = user_first_name
+        if user_last_name:
+            full_name += f" {user_last_name}"
+        
+        username_text = f"@{username}" if username else "немає username"
+        
+        notification_text = "🎅 <b>Нова реєстрація на Таємного Санту!</b>\n\n"
+        notification_text += f"👤 <b>Користувач:</b> {full_name}\n"
+        notification_text += f"📱 <b>Username:</b> {username_text}\n"
+        
+        # Відправляємо кожному адміну
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=notification_text,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Помилка відправки повідомлення адміну {admin_id}: {e}")
+        
+        await bot.session.close()
+        
+    except Exception as e:
+        logger.error(f"Помилка при відправці сповіщень адмінам: {e}")
 
 
 async def get_user_id_by_telegram_id(session: AsyncSession, telegram_id: int) -> int:
