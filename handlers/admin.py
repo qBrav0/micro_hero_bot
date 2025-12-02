@@ -2382,36 +2382,37 @@ async def process_admin_notification_message(message: Message, state: FSMContext
     await state.set_state(AdminNotificationStates.waiting_for_confirmation)
     
     # Показуємо підтвердження
+    import html
     text = f"📢 <b>Підтвердження сповіщення</b>\n\n"
     
     if notification_data["type"] == "text":
-        text += f"<b>Ваше повідомлення:</b>\n{notification_data['text']}\n\n"
+        text += f"<b>Ваше повідомлення:</b>\n{html.escape(notification_data['text'])}\n\n"
     elif notification_data["type"] == "photo":
         text += f"<b>Тип:</b> 📸 Фото\n"
         if notification_data["caption"]:
-            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+            text += f"<b>Підпис:</b> {html.escape(notification_data['caption'])}\n"
         text += "\n"
     elif notification_data["type"] == "sticker":
         text += f"<b>Тип:</b> 🎭 Стікер\n\n"
     elif notification_data["type"] == "voice":
         text += f"<b>Тип:</b> 🎤 Голосове повідомлення\n"
         if notification_data["caption"]:
-            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+            text += f"<b>Підпис:</b> {html.escape(notification_data['caption'])}\n"
         text += "\n"
     elif notification_data["type"] == "video":
         text += f"<b>Тип:</b> 🎥 Відео\n"
         if notification_data["caption"]:
-            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+            text += f"<b>Підпис:</b> {html.escape(notification_data['caption'])}\n"
         text += "\n"
     elif notification_data["type"] == "document":
         text += f"<b>Тип:</b> 📄 Документ\n"
         if notification_data["caption"]:
-            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+            text += f"<b>Підпис:</b> {html.escape(notification_data['caption'])}\n"
         text += "\n"
     elif notification_data["type"] == "audio":
         text += f"<b>Тип:</b> 🎵 Аудіо\n"
         if notification_data["caption"]:
-            text += f"<b>Підпис:</b> {notification_data['caption']}\n"
+            text += f"<b>Підпис:</b> {html.escape(notification_data['caption'])}\n"
         text += "\n"
     
     text += "⚠️ Це повідомлення буде відправлено всім користувачам з увімкненими сповіщеннями від адміністратора (включаючи інших адмінів).\n\n"
@@ -2463,6 +2464,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
             return
         
         # Відправляємо сповіщення
+        import html
         sent_count = 0
         failed_count = 0
         
@@ -2470,7 +2472,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
             try:
                 # Відправляємо різні типи повідомлень
                 if notification_data["type"] == "text":
-                    admin_message = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['text']}"
+                    admin_message = f"📢 <b>Сповіщення від адміністрації</b>\n\n{html.escape(notification_data['text'])}"
                     await callback.bot.send_message(
                         chat_id=user.telegram_id,
                         text=admin_message,
@@ -2478,7 +2480,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     )
                     
                 elif notification_data["type"] == "photo":
-                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{html.escape(notification_data['caption'])}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
                     await callback.bot.send_photo(
                         chat_id=user.telegram_id,
                         photo=notification_data['photo'],
@@ -2499,7 +2501,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     )
                     
                 elif notification_data["type"] == "voice":
-                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{html.escape(notification_data['caption'])}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
                     await callback.bot.send_voice(
                         chat_id=user.telegram_id,
                         voice=notification_data['voice'],
@@ -2508,7 +2510,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     )
                     
                 elif notification_data["type"] == "video":
-                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{html.escape(notification_data['caption'])}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
                     await callback.bot.send_video(
                         chat_id=user.telegram_id,
                         video=notification_data['video'],
@@ -2517,7 +2519,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     )
                     
                 elif notification_data["type"] == "document":
-                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{html.escape(notification_data['caption'])}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
                     await callback.bot.send_document(
                         chat_id=user.telegram_id,
                         document=notification_data['document'],
@@ -2526,7 +2528,7 @@ async def confirm_admin_notification(callback: CallbackQuery, state: FSMContext)
                     )
                     
                 elif notification_data["type"] == "audio":
-                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{notification_data['caption']}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
+                    admin_caption = f"📢 <b>Сповіщення від адміністрації</b>\n\n{html.escape(notification_data['caption'])}" if notification_data['caption'] else "📢 <b>Сповіщення від адміністрації</b>"
                     await callback.bot.send_audio(
                         chat_id=user.telegram_id,
                         audio=notification_data['audio'],
