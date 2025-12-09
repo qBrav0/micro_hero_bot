@@ -120,3 +120,4 @@ class SecretSanta(SQLModel, table=True):
     assigned_to: Optional[int] = Field(default=None, foreign_key="user.id")  # Кому дарує подарунок
     registered_at: datetime = Field(default_factory=datetime.utcnow)
     draw_completed: bool = Field(default=False)  # Чи відбулося жеребкування
+    will_attend: Optional[str] = None  # "attend" або "leave_secretly" - чи прийде 28.12

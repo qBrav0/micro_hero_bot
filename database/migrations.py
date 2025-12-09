@@ -40,6 +40,9 @@ async def run_migrations(engine: AsyncEngine):
             # Міграція 8: Створення таблиці для Таємного Санти
             await migrate_create_secret_santa_table(conn)
             
+            # Міграція 9: Додавання поля will_attend до таблиці secretsanta
+            await migrate_add_will_attend_field(conn)
+            
             logger.info("✅ Всі міграції виконано успішно")
             
         except Exception as e:
@@ -684,5 +687,73 @@ async def migrate_create_secret_santa_table(conn):
         
     except Exception as e:
         logger.error(f"❌ Помилка при створенні таблиці secretsanta: {e}")
+        raise
+
+
+async def migrate_add_will_attend_field(conn):
+    """
+    Додає поле will_attend до таблиці secretsanta
+    """
+    try:
+        # Визначаємо тип БД
+        db_name = conn.engine.dialect.name
+        
+        # Перевіряємо чи існує таблиця secretsanta
+        if db_name == 'sqlite':
+            result = await conn.execute(text(
+                """
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='secretsanta';
+                """
+            ))
+        else:  # PostgreSQL
+            result = await conn.execute(text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'secretsanta'
+                );
+                """
+            ))
+        
+        table_exists = result.scalar()
+        
+        if not table_exists:
+            logger.info("ℹ️ Таблиця secretsanta ще не створена, міграція буде застосована при створенні")
+            return
+        
+        # Перевіряємо чи вже існує поле will_attend
+        if db_name == 'sqlite':
+            result = await conn.execute(text(
+                "PRAGMA table_info(secretsanta);"
+            ))
+            columns = [row[1] for row in result.fetchall()]
+            column_exists = 'will_attend' in columns
+        else:  # PostgreSQL
+            result = await conn.execute(text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'secretsanta' AND column_name = 'will_attend'
+                );
+                """
+            ))
+            column_exists = result.scalar()
+        
+        if column_exists:
+            logger.info("ℹ️ Поле will_attend вже існує")
+            return
+        
+        logger.info("🔄 Додавання поля will_attend до таблиці secretsanta")
+        
+        # Додаємо поле
+        await conn.execute(text(
+            'ALTER TABLE secretsanta ADD COLUMN will_attend VARCHAR;'
+        ))
+        
+        logger.info("✅ Поле will_attend успішно додано")
+        
+    except Exception as e:
+        logger.error(f"❌ Помилка при додаванні поля will_attend: {e}")
         raise
 

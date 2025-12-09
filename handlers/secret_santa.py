@@ -337,18 +337,24 @@ async def show_secret_santa_admin(message: Message):
                 text += f"   📝 Побажання: {participant.wishes}\n"
                 text += f"   📅 Зареєстрований: {participant.registered_at.strftime('%d.%m.%Y %H:%M')}\n\n"
         
-        # Додаємо кнопку жеребкування якщо воно ще не відбулось
+        # Формуємо клавіатуру в залежності від стану жеребкування
+        keyboard_buttons = []
+        
         if not draw_completed:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🎲 Провести жеребкування", callback_data="secret_santa_start_draw")]
-            ])
+            # Якщо жеребкування не відбулось - показуємо тільки кнопку жеребкування
+            keyboard_buttons.append([InlineKeyboardButton(text="🎲 Провести жеребкування", callback_data="secret_santa_start_draw")])
             text += "\n💡 Натисніть кнопку нижче для проведення жеребкування"
-            await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
         else:
+            # Якщо жеребкування завершено - показуємо кнопки для роботи з учасниками
             text += "\n✅ <b>Жеребкування завершено!</b>\n"
-            text += "📤 Всі учасники отримали повідомлення з інформацією про своїх підопічних.\n"
-            text += "🔒 Повторне жеребкування неможливе."
-            await message.answer(text, parse_mode="HTML")
+            text += "📤 Всі учасники отримали повідомлення з інформацією про своїх підопічних.\n\n"
+            text += "📋 <b>Доступні дії:</b>"
+            
+            keyboard_buttons.append([InlineKeyboardButton(text="✅ Перевірити присутність (розсилка)", callback_data="secret_santa_check_attendance")])
+            keyboard_buttons.append([InlineKeyboardButton(text="👥 Учасники", callback_data="secret_santa_show_participants")])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "secret_santa_start_draw")
@@ -517,6 +523,247 @@ async def send_draw_notifications(callback: CallbackQuery):
         except Exception as e:
             logger.error(f"Помилка при розсилці повідомлень: {e}")
             await callback.answer(f"❌ Помилка: {e}", show_alert=True)
+
+
+@router.callback_query(F.data == "secret_santa_show_participants")
+async def show_participants_info(callback: CallbackQuery):
+    """Показати інформацію про учасників"""
+    user_id = callback.from_user.id
+    
+    # Перевіряємо чи користувач адмін
+    if user_id not in ADMIN_IDS:
+        await callback.answer("❌ У вас немає доступу до цієї функції", show_alert=True)
+        return
+    
+    async for session in get_session():
+        participants = await get_all_secret_santa_participants(session)
+        
+        if not participants:
+            await callback.answer("❌ Немає учасників", show_alert=True)
+            return
+        
+        from database.models import User
+        from sqlmodel import select
+        
+        # Перевіряємо чи це головний адмін (494854236)
+        is_main_admin = (user_id == 494854236)
+        
+        text = "🎅 <b>Учасники Таємного Санти</b>\n\n"
+        
+        if is_main_admin:
+            # Показуємо повний розподіл
+            text += "🎲 <b>Розподіл учасників:</b>\n\n"
+            
+            for participant in participants:
+                # Отримуємо інформацію про дарувальника
+                result = await session.execute(select(User).where(User.id == participant.user_id))
+                giver = result.scalar_one_or_none()
+                
+                if giver and participant.assigned_to:
+                    # Отримуємо інформацію про отримувача
+                    result = await session.execute(select(User).where(User.id == participant.assigned_to))
+                    receiver = result.scalar_one_or_none()
+                    
+                    if receiver:
+                        giver_name = giver.first_name
+                        if giver.last_name:
+                            giver_name += f" {giver.last_name}"
+                        
+                        receiver_name = receiver.first_name
+                        if receiver.last_name:
+                            receiver_name += f" {receiver.last_name}"
+                        
+                        text += f"🎁 <b>{giver_name}</b> → <b>{receiver_name}</b>\n"
+            
+            text += "\n📝 <b>Побажання учасників:</b>\n\n"
+        else:
+            # Для інших адмінів
+            text += "🤫 Розподіл є тільки в мене, а побажання внизу 😉\n\n"
+            text += "📝 <b>Побажання учасників:</b>\n\n"
+        
+        # Показуємо побажання всім адмінам
+        for idx, participant in enumerate(participants, 1):
+            result = await session.execute(select(User).where(User.id == participant.user_id))
+            user = result.scalar_one_or_none()
+            
+            if user:
+                full_name = user.first_name
+                if user.last_name:
+                    full_name += f" {user.last_name}"
+                
+                username = f"@{user.username}" if user.username else "немає username"
+                
+                text += f"{idx}. <b>{full_name}</b> ({username})\n"
+                text += f"   📝 {participant.wishes}\n\n"
+        
+        await callback.message.edit_text(text, parse_mode="HTML")
+        await callback.answer()
+
+
+@router.callback_query(F.data == "secret_santa_check_attendance")
+async def check_attendance_confirmation(callback: CallbackQuery):
+    """Підтвердження розсилки перевірки присутності"""
+    user_id = callback.from_user.id
+    
+    # Перевіряємо чи користувач адмін
+    if user_id not in ADMIN_IDS:
+        await callback.answer("❌ У вас немає доступу до цієї функції", show_alert=True)
+        return
+    
+    text = "⚠️ <b>Підтвердження розсилки</b>\n\n"
+    text += "Ви справді хочете надіслати всім зареєстрованим учасникам\n"
+    text += "Таємного Санти повідомлення з перевіркою присутності 28.12?\n\n"
+    text += "Кожен учасник отримає повідомлення з питанням:\n"
+    text += "• Чи прийдуть вони 28.12 для обміну подарунками\n"
+    text += "• Чи залишать подарунок таємно до 28.12"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Так, надіслати", callback_data="secret_santa_send_attendance_check"),
+            InlineKeyboardButton(text="❌ Скасувати", callback_data="secret_santa_cancel_attendance")
+        ]
+    ])
+    
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "secret_santa_cancel_attendance")
+async def cancel_attendance_check(callback: CallbackQuery):
+    """Скасування розсилки"""
+    await callback.message.edit_text("❌ Розсилку скасовано")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "secret_santa_send_attendance_check")
+async def send_attendance_check(callback: CallbackQuery):
+    """Розсилка перевірки присутності"""
+    user_id = callback.from_user.id
+    
+    # Перевіряємо чи користувач адмін
+    if user_id not in ADMIN_IDS:
+        await callback.answer("❌ У вас немає доступу до цієї функції", show_alert=True)
+        return
+    
+    async for session in get_session():
+        participants = await get_all_secret_santa_participants(session)
+        
+        if not participants:
+            await callback.answer("❌ Немає зареєстрованих учасників", show_alert=True)
+            return
+        
+        bot = Bot(token=BOT_TOKEN)
+        
+        from database.models import User
+        from sqlmodel import select
+        
+        success_count = 0
+        for participant in participants:
+            result = await session.execute(select(User).where(User.id == participant.user_id))
+            user = result.scalar_one_or_none()
+            
+            if user:
+                message_text = "🎅 <b>Таємний Санта - Перевірка присутності</b> 🎄\n\n"
+                message_text += "📅 <b>28 грудня</b> відбудеться особистий обмін подарунками в ігротеці!\n\n"
+                message_text += "❓ <b>Оберіть ваш варіант:</b>\n\n"
+                message_text += "🎁 <b>Прийду 28.12</b> - ви особисто приєднаєтесь до обміну подарунками\n\n"
+                message_text += "🤫 <b>Залишу таємно</b> - ви залишите подарунок в ігротеці до 28.12\n"
+                message_text += "   (у цьому випадку напишіть Насті @vestara_arron для уточнення\n"
+                message_text += "   як передачі, так і отримання подарунку)\n\n"
+                message_text += "👇 Натисніть одну з кнопок нижче:"
+                
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Прийду 28.12", callback_data=f"attendance_yes_{participant.user_id}")],
+                    [InlineKeyboardButton(text="🤫 Залишу таємно", callback_data=f"attendance_no_{participant.user_id}")]
+                ])
+                
+                try:
+                    await bot.send_message(
+                        chat_id=user.telegram_id,
+                        text=message_text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Помилка відправки повідомлення користувачу {user.telegram_id}: {e}")
+        
+        await bot.session.close()
+        
+        await callback.message.edit_text(
+            f"✅ <b>Розсилку завершено!</b>\n\n"
+            f"Повідомлення надіслано: {success_count} з {len(participants)} учасників",
+            parse_mode="HTML"
+        )
+        await callback.answer("✅ Розсилку завершено!")
+
+
+@router.callback_query(F.data.startswith("attendance_"))
+async def handle_attendance_choice(callback: CallbackQuery):
+    """Обробка вибору присутності користувача"""
+    user_id = callback.from_user.id
+    data_parts = callback.data.split("_")
+    
+    if len(data_parts) != 3:
+        await callback.answer("❌ Помилка обробки", show_alert=True)
+        return
+    
+    choice = data_parts[1]  # "yes" або "no"
+    participant_user_id = int(data_parts[2])
+    
+    async for session in get_session():
+        user_db = await get_user_by_telegram_id(session, user_id)
+        if not user_db or user_db.id != participant_user_id:
+            await callback.answer("❌ Помилка ідентифікації", show_alert=True)
+            return
+        
+        # Оновлюємо вибір користувача
+        participant = await get_secret_santa_participant(session, user_db.id)
+        if participant:
+            participant.will_attend = "attend" if choice == "yes" else "leave_secretly"
+            session.add(participant)
+            await session.commit()
+            
+            # Формуємо відповідь користувачу
+            if choice == "yes":
+                response_text = "✅ <b>Дякуємо!</b>\n\n"
+                response_text += "Ви підтвердили свою присутність 28.12 в ігротеці.\n"
+                response_text += "Чекаємо на вас для обміну подарунками! 🎁"
+            else:
+                response_text = "✅ <b>Дякуємо!</b>\n\n"
+                response_text += "Ви обрали варіант залишити подарунок таємно.\n\n"
+                response_text += "⚠️ <b>Важливо:</b> Напишіть Насті (@vestara_arron)\n"
+                response_text += "для уточнення деталей передачі та отримання подарунку."
+            
+            await callback.message.edit_text(response_text, parse_mode="HTML")
+            
+            # Відправляємо повідомлення адмінам
+            from database.models import User
+            full_name = user_db.first_name
+            if user_db.last_name:
+                full_name += f" {user_db.last_name}"
+            
+            username = f"@{user_db.username}" if user_db.username else "немає username"
+            
+            choice_text = "✅ Прийду 28.12" if choice == "yes" else "🤫 Залишу таємно"
+            
+            admin_text = f"🎅 <b>Вибір учасника</b>\n\n"
+            admin_text += f"👤 <b>Учасник:</b> {full_name} ({username})\n"
+            admin_text += f"📋 <b>Вибір:</b> {choice_text}"
+            
+            bot = Bot(token=BOT_TOKEN)
+            for admin_id in ADMIN_IDS:
+                try:
+                    await bot.send_message(
+                        chat_id=admin_id,
+                        text=admin_text,
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Помилка відправки повідомлення адміну {admin_id}: {e}")
+            
+            await bot.session.close()
+            await callback.answer("✅ Ваш вибір збережено!")
 
 
 def conduct_draw(participants):
