@@ -80,11 +80,7 @@ async def show_secret_santa_info(message: Message):
                 text += "💰 <b>Рекомендована вартість:</b> 200-300 грн\n"
                 text += "   (за бажанням можна подарувати за більшу вартість)"
                 
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Переглянути знову", callback_data="secret_santa_show_assigned")]
-                ])
-                
-                await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                await message.answer(text, parse_mode="HTML")
             else:
                 await message.answer("❌ Помилка отримання інформації про підопічного")
         
