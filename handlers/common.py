@@ -2,6 +2,8 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from keyboards import get_main_menu
 from config import ADMIN_IDS
+from database import get_session, get_user_by_telegram_id
+from database.crud import check_secret_santa_registered
 import os
 
 router = Router()
@@ -10,11 +12,19 @@ router = Router()
 @router.message(F.text == "🏠 Головне меню")
 async def back_to_menu(message: Message):
     """Повернення до головного меню"""
-    is_admin = message.from_user.id in ADMIN_IDS
+    user_id = message.from_user.id
+    is_admin = user_id in ADMIN_IDS
+    
+    # Перевіряємо чи користувач зареєстрований на Таємний Санта
+    is_secret_santa_participant = False
+    async for session in get_session():
+        user = await get_user_by_telegram_id(session, user_id)
+        if user:
+            is_secret_santa_participant = await check_secret_santa_registered(session, user.id)
     
     await message.answer(
         "🏠 Головне меню",
-        reply_markup=get_main_menu(is_admin=is_admin)
+        reply_markup=get_main_menu(is_admin=is_admin, is_secret_santa_participant=is_secret_santa_participant)
     )
 
 

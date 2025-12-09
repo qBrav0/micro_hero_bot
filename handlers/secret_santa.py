@@ -203,7 +203,7 @@ async def process_wishes(message: Message, state: FSMContext):
             await message.answer(text, parse_mode="HTML")
             await message.answer(
                 "Повертайтесь до головного меню:",
-                reply_markup=get_main_menu(is_admin=is_admin)
+                reply_markup=get_main_menu(is_admin=is_admin, is_secret_santa_participant=True)
             )
             
             # Відправляємо сповіщення адмінам

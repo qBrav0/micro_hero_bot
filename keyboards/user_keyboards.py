@@ -1,7 +1,7 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 
-def get_main_menu(is_admin: bool = False) -> ReplyKeyboardMarkup:
+def get_main_menu(is_admin: bool = False, is_secret_santa_participant: bool = False) -> ReplyKeyboardMarkup:
     """Головне меню для користувача"""
     keyboard = [
         [KeyboardButton(text="📅 Розклад ігротеки")],
@@ -9,9 +9,13 @@ def get_main_menu(is_admin: bool = False) -> ReplyKeyboardMarkup:
         [KeyboardButton(text="🎲 База ігор")],
         [KeyboardButton(text="🔔 Налаштування сповіщень")],
         [KeyboardButton(text="🏆 Топ-10 ігротеки")],
-        [KeyboardButton(text="🎅 Таємний Санта")],
-        [KeyboardButton(text="ℹ️ Про ігротеку"), KeyboardButton(text="💳 Оплата")]
     ]
+    
+    # Кнопка Таємний Санта показується тільки для зареєстрованих учасників
+    if is_secret_santa_participant:
+        keyboard.append([KeyboardButton(text="🎅 Таємний Санта")])
+    
+    keyboard.append([KeyboardButton(text="ℹ️ Про ігротеку"), KeyboardButton(text="💳 Оплата")])
     
     if is_admin:
         keyboard.append([KeyboardButton(text="⚙️ Адмін-панель")])

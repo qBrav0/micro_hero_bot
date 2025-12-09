@@ -3,6 +3,7 @@ from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_session, get_user_by_telegram_id, create_user
+from database.crud import check_secret_santa_registered
 from keyboards import get_main_menu
 from config import ADMIN_IDS
 
@@ -26,7 +27,7 @@ async def cmd_start(message: Message):
         
         if not user:
             # Створюємо нового користувача
-            await create_user(
+            user = await create_user(
                 session=session,
                 telegram_id=user_id,
                 username=message.from_user.username,
@@ -34,6 +35,9 @@ async def cmd_start(message: Message):
                 last_name=message.from_user.last_name,
                 is_admin=is_admin
             )
+        
+        # Перевіряємо чи користувач зареєстрований на Таємний Санта
+        is_secret_santa_participant = await check_secret_santa_registered(session, user.id)
         
         # Отримуємо назву та опис з БД (якщо є, якщо немає - з .env)
         club_name = await get_setting(session, "CLUB_NAME") or config.CLUB_NAME
@@ -45,7 +49,7 @@ async def cmd_start(message: Message):
         
         await message.answer(
             welcome_text,
-            reply_markup=get_main_menu(is_admin=is_admin),
+            reply_markup=get_main_menu(is_admin=is_admin, is_secret_santa_participant=is_secret_santa_participant),
             parse_mode="HTML"
         )
 
